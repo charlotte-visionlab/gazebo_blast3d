@@ -1,0 +1,113 @@
+<!-- -->
+<?xml version="1.0" ?>
+<sdf version="1.5">
+  <world name="default">
+    <!-- A global light source -->
+    <include>
+      <uri>model://sun</uri>
+    </include>
+    <!-- A ground plane -->
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+    <include>
+      <uri>model://asphalt_plane</uri>
+    </include>
+    <plugin name='blast3d_plugin' filename='libgazebo_blast3d_world_plugin.so'>
+      <blast3dServerRegisterLinkTopic>/gazebo/default/world_blast3d_register_link</blast3dServerRegisterLinkTopic>
+      <useCustomBlastData>false</useCustomBlastData>
+      <customBlastDataFile></customBlastDataFile>
+    </plugin>
+    <gravity>0 0 -9.8066</gravity>
+    <!--<gravity>0 0 0</gravity>-->
+    <physics name='default_physics' default='0' type='ode'>
+      <ode>
+        <solver>
+          <type>quick</type>
+          <iters>10</iters>
+          <sor>1.3</sor>
+          <use_dynamic_moi_rescaling>0</use_dynamic_moi_rescaling>
+        </solver>
+        <constraints>
+          <cfm>0</cfm>
+          <erp>0.2</erp>
+          <contact_max_correcting_vel>100</contact_max_correcting_vel>
+          <contact_surface_layer>0.001</contact_surface_layer>
+        </constraints>
+      </ode>
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1</real_time_factor>
+      <real_time_update_rate>250</real_time_update_rate>
+      <magnetic_field>6.0e-6 2.3e-5 -4.2e-5</magnetic_field>
+    </physics>
+    <model name='unit_sphere'>
+      <pose>0.013103 0.035528 1 0 -0 0</pose>
+      <link name='base_link'>
+        <inertial>
+          <mass>0.1</mass>
+          <inertia>
+            <ixx>0.01</ixx>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyy>0.01</iyy>
+            <iyz>0</iyz>
+            <izz>0.01</izz>
+          </inertia>
+          <pose>0 0 0 0 -0 0</pose>
+        </inertial>
+        <collision name='collision'>
+          <geometry>
+            <sphere>
+              <radius>0.5</radius>
+            </sphere>
+          </geometry>
+          <max_contacts>10</max_contacts>
+          <surface>
+            <contact>
+              <ode/>
+            </contact>
+            <bounce/>
+            <friction>
+              <torsional>
+                <ode/>
+              </torsional>
+              <ode/>
+            </friction>
+          </surface>
+        </collision>
+        <visual name='visual'>
+          <geometry>
+            <sphere>
+              <radius>0.5</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <script>
+              <name>Gazebo/Grey</name>
+              <uri>file://media/materials/scripts/gazebo.material</uri>
+            </script>
+          </material>
+        </visual>
+        <self_collide>0</self_collide>
+        <enable_gravity>1</enable_gravity>
+        <enable_wind>1</enable_wind>
+        <wind>
+          <x>10</x>
+          <y>10</y>
+          <z>10</z>
+        </wind>
+        <kinematic>0</kinematic>
+      </link>
+      <enable_wind>true</enable_wind>
+      <static>false</static>
+      <plugin name='gazebo_blast3d_plugin' filename='libgazebo_blast3d_model_plugin.so'>
+        <robotNamespace></robotNamespace>
+        <frameId>world</frameId>
+        <linkName>/sphere/base_link2</linkName>
+        <publishRate>5</publishRate>
+        <blast3dServerRegisterLinkTopic>/gazebo/default/world_wind_register_link</blast3dServerRegisterLinkTopic>
+        <blast3dServerLinkTopic>/gazebo/default/sphere_wind</blast3dServerLinkTopic>
+      </plugin>
+    </model>
+  </world>
+</sdf>

@@ -1,0 +1,13 @@
+syntax = "proto2";
+package blast3d_msgs.msgs;
+
+// Blast3d server registrations indicate the link name having a position
+// where the blast is sampled.
+message Blast3dServerRegistration
+{
+  required string model_name = 1;
+  required string link_name = 2;
+  required string namespace = 3;
+  required string link_wind_topic = 4;
+}
+

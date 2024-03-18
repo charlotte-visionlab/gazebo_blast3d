@@ -1,0 +1,129 @@
+/*
+ * Copyright 2024 Andrew Willis <arwillis@charlotte.edu> UNC Charlotte
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "gazebo_blast3d_world_plugin.h"
+#include "common.h"
+
+namespace gazebo {
+
+    GazeboBlast3DWorldPlugin::~GazeboBlast3DWorldPlugin() {
+        update_connection_->~Connection();
+    }
+
+    void GazeboBlast3DWorldPlugin::Load(physics::WorldPtr world, sdf::ElementPtr sdf) {
+        world_ = world;
+
+        node_handle_ = transport::NodePtr(new transport::Node());
+        node_handle_->Init();
+
+        getSdfParam<std::string>(sdf, "blast3dServerRegisterLinkTopic", blast3d_server_reglink_topic_, blast3d_server_reglink_topic_);
+        // Check if a custom static wind field should be used.
+        getSdfParam<bool>(sdf, "useCustomBlastData", use_custom_blastdata_,
+                          use_custom_blastdata_);
+
+        if (!use_custom_blastdata_) {
+            gzdbg << "[gazebo_blast3d_world_plugin] Using standard blast models.\n";
+        } else {
+            gzdbg << "[gazebo_blast3d_world_plugin] Using custom blast models from data file.\n";
+            // Get the wind field text file path, read it and save data.
+            std::string custom_blastdata_path;
+            getSdfParam<std::string>(sdf, "customBlastDataFile", custom_blastdata_path,
+                                     custom_blastdata_path);
+
+            ReadBlast3DData(custom_blastdata_path);
+        }
+
+        // Listen to the update event. This event is broadcast every
+        // simulation iteration.
+        update_connection_ = event::Events::ConnectWorldUpdateBegin(boost::bind(&GazeboBlast3DWorldPlugin::OnUpdate, this, _1));
+
+#if GAZEBO_MAJOR_VERSION >= 9
+        last_time_ = world_->SimTime();
+#else
+        last_time_ = world_->GetSimTime();
+#endif
+    }
+
+    void GazeboBlast3DWorldPlugin::RegisterLinkCallback(Blast3dServerRegistrationPtr msg) {
+        //gzdbg << __FUNCTION__ << "() called." << std::endl;
+        const std::string& model_name = msg->model_name();
+        const std::string& link_name = msg->link_name();
+        const std::string& namespace_val = msg->namespace_();
+        const std::string& link_blast3d_topic = msg->link_wind_topic();
+        physics::LinkPtr currentModelLinkPtr = NULL;
+        gazebo::physics::ModelPtr currentModelPtr = NULL;
+
+        currentModelPtr = world_->ModelByName(model_name);
+        if (currentModelPtr == NULL) {
+            gzdbg << "[gazebo_wind3d_world_plugin] Model: " << model_name << "does not exist ." << std::endl;
+            return;
+        }
+        currentModelLinkPtr = currentModelPtr->GetLink(link_name);
+
+        if (currentModelLinkPtr != NULL) {
+            registered_link_name_list_.push_back(link_name);
+            registered_link_list_.push_back(currentModelLinkPtr);
+            registered_namespace_list_.push_back(namespace_val);
+            registered_client_blast3d_topic_list_.push_back(link_blast3d_topic);
+            //transport::PublisherPtr link_blast3d_pub_ = node_handle_->Advertise<blast3d_msgs::msgs::Blast3d>(link_blast3d_topic, 10);
+            registered_link_blast3d_publisher_list_.push_back(
+                    node_handle_->Advertise<blast3d_msgs::msgs::Blast3d>(link_blast3d_topic, 10));
+            gzdbg << __FUNCTION__ << "() Registered (Model, Namespace, Link, Topic) = (" << currentModelPtr->GetName()
+                    << ", " << namespace_val << ", " << link_name << ", " << link_blast3d_topic << ") to the world wind server." << std::endl;
+        } else {
+            gzdbg << __FUNCTION__ << "() Model: " << currentModelPtr->GetName() <<
+                    "does not have link " << link_name << "." << std::endl;
+        }
+    }
+    
+    // This gets called by the world update start event.
+    void GazeboBlast3DWorldPlugin::OnUpdate(const common::UpdateInfo &_info) {
+        // Get the current simulation time.
+#if GAZEBO_MAJOR_VERSION >= 9
+        common::Time now = world_->SimTime();
+#else
+        common::Time now = world_->GetSimTime();
+#endif
+        if (!pubs_and_subs_created_) {
+            CreatePubsAndSubs();
+            pubs_and_subs_created_ = true;
+        }
+
+        last_time_ = now;
+        if (!use_custom_blastdata_) {
+        } else {
+        }
+    }
+
+    void GazeboBlast3DWorldPlugin::CreatePubsAndSubs() {
+        // Create subscriber to receive blast client requests
+        blast3d_register_sub_ = node_handle_->Subscribe<blast3d_msgs::msgs::Blast3dServerRegistration>(blast3d_server_reglink_topic_,
+                &GazeboBlast3DWorldPlugin::RegisterLinkCallback, this);
+        
+    }
+
+    void GazeboBlast3DWorldPlugin::ReadBlast3DData(std::string &custom_blastdata_path) {
+        std::vector<std::vector<double>> data;
+        bool csvReadOK = readCSV(custom_blastdata_path, data);
+        if (!csvReadOK) {
+            gzerr << __FUNCTION__ << "[gazebo_blast3d_world_plugin] Could not open custom blast data CSV file." << std::endl;
+            return;
+        }
+        gzdbg << "[gazebo_blast3d_world_plugin] Successfully read custom blast data from text file.\n";
+    }
+
+    GZ_REGISTER_WORLD_PLUGIN(GazeboBlast3DWorldPlugin);
+}

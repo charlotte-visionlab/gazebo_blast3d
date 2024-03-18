@@ -1,0 +1,6 @@
+syntax = "proto2";
+package blast3d_msgs.msgs;
+
+message Blast3d {
+  required string model_name = 1;
+}
