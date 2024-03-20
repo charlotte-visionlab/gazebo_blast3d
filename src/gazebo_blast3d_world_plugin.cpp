@@ -15,7 +15,6 @@
  */
 
 #include "gazebo_blast3d_world_plugin.h"
-#include "common.h"
 
 namespace gazebo {
 

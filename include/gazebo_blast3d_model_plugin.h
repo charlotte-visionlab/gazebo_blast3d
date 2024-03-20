@@ -31,9 +31,31 @@
 #include "Blast3dServerRegistration.pb.h"
 //#include "ConnectGazeboToRosTopic.pb.h"
 
-#include "common.h"
+
 
 namespace gazebo {
+
+    /**
+     * \brief Obtains a parameter from sdf.
+     * \param[in] sdf Pointer to the sdf object.
+     * \param[in] name Name of the parameter.
+     * \param[out] param Param Variable to write the parameter to.
+     * \param[in] default_value Default value, if the parameter not available.
+     * \param[in] verbose If true, gzerror if the parameter is not available.
+     */
+    template<class T>
+    bool getSdfParam(sdf::ElementPtr sdf, const std::string& name, T& param, const T& default_value, const bool& verbose =
+            false) {
+        if (sdf->HasElement(name)) {
+            param = sdf->GetElement(name)->Get<T>();
+            return true;
+        } else {
+            param = default_value;
+            if (verbose)
+                gzerr << "[rotors_gazebo_plugins] Please specify a value for parameter \"" << name << "\".\n";
+        }
+        return false;
+    }
     // Constants
     static const bool kPrintOnPluginLoad = false;
     static const bool kPrintOnUpdates = false;
@@ -47,7 +69,7 @@ namespace gazebo {
     static const std::string kConnectRosToGazeboSubtopic = "connect_ros_to_gazebo_subtopic";
 
     typedef const boost::shared_ptr<const blast3d_msgs::msgs::Blast3d>& Blast3dMsgPtr;
-    
+
     class GazeboBlast3DModelPlugin : public ModelPlugin {
     public:
         /// \brief    Constructor.
@@ -56,11 +78,11 @@ namespace gazebo {
         : ModelPlugin(),
         namespace_(kDefaultNamespace),
         blast3d_server_reglink_topic_(kDefaultBlast3dServerRegisterTopic_model),
-        blast3d_server_link_topic_(kDefaultNamespace+"/"+kDefaultLinkName+"/"+kDefaultBlast3dTopic),
+        blast3d_server_link_topic_(kDefaultNamespace + "/" + kDefaultLinkName + "/" + kDefaultBlast3dTopic),
         frame_id_(kDefaultFrameId),
         link_name_(kDefaultLinkName),
         pub_interval_(0.5),
-        node_handle_(nullptr),                
+        node_handle_(nullptr),
         pubs_and_subs_created_(false) {
         }
 
@@ -89,7 +111,7 @@ namespace gazebo {
         void CreatePubsAndSubs();
 
         void Blast3DCallback(Blast3dMsgPtr& blast3d_msg);
-        
+
         /// \brief    Handle for the Gazebo node.
         gazebo::transport::NodePtr node_handle_;
 
@@ -98,7 +120,7 @@ namespace gazebo {
         /// \brief    Topic name for blast3d messages.
         std::string blast3d_server_reglink_topic_;
         std::string blast3d_server_link_topic_;
-        
+
         /// \brief    Blast3d model plugin publishers and subscribers
         gazebo::transport::PublisherPtr blast3d_server_register_pub_;
         gazebo::transport::SubscriberPtr blast3d_server_msg_sub_;
