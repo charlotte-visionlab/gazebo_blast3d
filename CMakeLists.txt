@@ -219,6 +219,11 @@ set(sensor_msgs
 set(blast3d_msgs
     msgs/Blast3d.proto
     msgs/Blast3dServerRegistration.proto
+    msgs/Header.proto
+    msgs/Event.proto
+    msgs/EventArray.proto
+    msgs/OpticalFlow.proto
+    msgs/Audio.proto
   )
 
 #PROTOBUF_GENERATE_CPP(MAV_PROTO_SRCS MAV_PROTO_HDRS ${mav_msgs})
@@ -241,11 +246,17 @@ add_library(blast3d_msgs SHARED ${BLAST3D_PROTO_SRCS})
 
 #link_libraries(mav_msgs nav_msgs physics_msgs std_msgs sensor_msgs)
 
+add_library(gazebo_blast3d_camera_plugin SHARED src/gazebo_blast3d_camera_plugin.cpp)
+
+add_library(gazebo_blast3d_microphone_plugin SHARED src/gazebo_blast3d_microphone_plugin.cpp)
+
 add_library(gazebo_blast3d_model_plugin SHARED src/gazebo_blast3d_model_plugin.cpp)
 
 add_library(gazebo_blast3d_world_plugin SHARED src/gazebo_blast3d_world_plugin.cpp)
 
 set(plugins
+  gazebo_blast3d_camera_plugin
+  gazebo_blast3d_microphone_plugin
   gazebo_blast3d_model_plugin
   gazebo_blast3d_world_plugin
   )

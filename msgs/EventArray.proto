@@ -1,0 +1,13 @@
+syntax = "proto2";
+package sensor_msgs.msgs;
+
+import "Header.proto";
+import "Event.proto";
+
+message EventArray
+{
+  required gz_std_msgs.Header header        = 1;
+  required uint32 width                     = 2;
+  required uint32 height                    = 3;
+  repeated sensor_msgs.msgs.Event events    = 4;
+}

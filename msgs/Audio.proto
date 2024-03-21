@@ -1,0 +1,14 @@
+syntax = "proto2";
+package sensor_msgs.msgs;
+
+import "Header.proto";
+import "Event.proto";
+
+// Audio message type which is emitted by the microphone plugin
+message Audio
+{
+  required gz_std_msgs.Header header    = 1;
+  required uint32 bitspersample         = 2;
+  required uint32 samplerate            = 3;
+  repeated bytes  sampledata            = 4;
+}
