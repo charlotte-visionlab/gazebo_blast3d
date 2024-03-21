@@ -36,6 +36,7 @@ namespace gazebo {
     /////////////////////////////////////////////////
 
     GazeboBlast3DMicrophonePlugin::~GazeboBlast3DMicrophonePlugin() {
+        updateConnection_->~Connection();
     }
 
     /////////////////////////////////////////////////
@@ -55,21 +56,32 @@ namespace gazebo {
         string topicName = "~/audio";
         boost::replace_all(topicName, "::", "/");
 
+        // READ THE AUDIO FILE FOR BACKGROUND
+        // READ THE AUDIO FILE FOR BOOM
+        std::string boom_file = "boom.wav";
+        std::string background_file = "background_loop.wav";
+        readWAV(boom_file.c_str());
         audio_pub_ = node_handle_->Advertise<sensor_msgs::msgs::Audio>(topicName, 10);
-
+        updateConnection_ = event::Events::ConnectWorldUpdateBegin(
+                boost::bind(&GazeboBlast3DMicrophonePlugin::OnUpdate, this, _1));
     }
 
     /////////////////////////////////////////////////
 
-    void GazeboBlast3DMicrophonePlugin::OnUpdate() {
+    void GazeboBlast3DMicrophonePlugin::OnUpdate(const common::UpdateInfo& _info) {
 
         // Get the current simulation time.
-#if GAZEBO_MAJOR_VERSION >= 9
-        common::Time now = world->SimTime();
-#else
-        common::Time now = world->GetSimTime();
-#endif
-
+//#if GAZEBO_MAJOR_VERSION >= 9
+//        common::Time now = world->SimTime();
+//#else
+//        common::Time now = world->GetSimTime();
+//#endif
+        // COMPUTE TIME INDEX IN BACKGROUND
+        // ADD NEXT CHUNK OF BACKGROUND AUDIO
+                
+        // IF SEISMIC_BOOM ADD SEISMIC_BOOM AUDIO
+        // IF AIR_BOOM ADD AIR_BOOM AUDIO
+        
         //audio_message.set_time_usec(now.Double() * 1e6);
         //send message
         audio_pub_->Publish(audio_message);

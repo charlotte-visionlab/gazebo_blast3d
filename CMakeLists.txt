@@ -54,7 +54,7 @@ else()
 		find_package(PythonInterp 3 REQUIRED)
 	endif()
 endif()
-#find_package(OpenCV REQUIRED)
+find_package(OpenCV REQUIRED)
 #find_package(TinyXML REQUIRED)
 
 if("${GAZEBO_VERSION}" VERSION_LESS "8.0")

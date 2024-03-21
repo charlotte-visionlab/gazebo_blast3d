@@ -16,6 +16,8 @@
 #include <iostream>
 #include <ignition/math.hh>
 
+#include "utils/WAVReader.h"
+
 using namespace std;
 
 namespace gazebo
@@ -28,7 +30,7 @@ namespace gazebo
       GazeboBlast3DMicrophonePlugin();
       virtual ~GazeboBlast3DMicrophonePlugin();
       virtual void Load(sensors::SensorPtr _sensor, sdf::ElementPtr _sdf);
-      virtual void OnUpdate();
+      virtual void OnUpdate(const common::UpdateInfo& _info);
 
     protected:
       unsigned int width, height, depth;
@@ -36,7 +38,8 @@ namespace gazebo
       physics::WorldPtr world;
 
     private:
-      event::ConnectionPtr newFrameConnection;
+      /// \brief    Pointer to the update event connection.
+      event::ConnectionPtr updateConnection_;
       sensor_msgs::msgs::Audio audio_message;
       transport::PublisherPtr audio_pub_;
       transport::NodePtr node_handle_;
