@@ -16,13 +16,12 @@
 #include <iostream>
 #include <ignition/math.hh>
 
-#include "utils/WAVReader.h"
+#include "utils/AudioFile.h"
 
 using namespace std;
 
 namespace gazebo
 {
-  static const std::string kDefaultGyroTopic = "/px4flow/imu";
 
   class GAZEBO_VISIBLE GazeboBlast3DMicrophonePlugin : public SensorPlugin
   {
@@ -33,7 +32,6 @@ namespace gazebo
       virtual void OnUpdate(const common::UpdateInfo& _info);
 
     protected:
-      unsigned int width, height, depth;
       std::string format;
       physics::WorldPtr world;
 

@@ -60,7 +60,25 @@ namespace gazebo {
         // READ THE AUDIO FILE FOR BOOM
         std::string boom_file = "boom.wav";
         std::string background_file = "background_loop.wav";
-        readWAV(boom_file.c_str());
+        AudioFile<float> a;
+        bool loadedOK = a.load (boom_file);
+        
+        /** If you hit this assert then the file path above
+         probably doesn't refer to a valid audio file */
+        assert (loadedOK);
+        
+        //---------------------------------------------------------------
+        // 3. Let's apply a gain to every audio sample
+        
+        float gain = 0.5f;
+
+        for (int i = 0; i < a.getNumSamplesPerChannel(); i++)
+        {
+            for (int channel = 0; channel < a.getNumChannels(); channel++)
+            {
+                a.samples[channel][i] = a.samples[channel][i] * gain;
+            }
+        }        
         audio_pub_ = node_handle_->Advertise<sensor_msgs::msgs::Audio>(topicName, 10);
         updateConnection_ = event::Events::ConnectWorldUpdateBegin(
                 boost::bind(&GazeboBlast3DMicrophonePlugin::OnUpdate, this, _1));
