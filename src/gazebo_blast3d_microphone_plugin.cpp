@@ -44,7 +44,10 @@ namespace gazebo {
     void GazeboBlast3DMicrophonePlugin::Load(sensors::SensorPtr _sensor, sdf::ElementPtr _sdf) {
         if (!_sensor)
             gzerr << "Invalid sensor pointer.\n";
-
+        if (kPrintOnPluginLoad) {
+            gzdbg << __FUNCTION__ << "() called." << std::endl;
+        }
+        
         if (_sdf->HasElement("robotNamespace"))
             namespace_ = _sdf->GetElement("robotNamespace")->Get<std::string>();
         else
@@ -53,9 +56,10 @@ namespace gazebo {
         node_handle_ = transport::NodePtr(new transport::Node());
         node_handle_->Init(namespace_);
 
-        string topicName = "~/audio";
-        boost::replace_all(topicName, "::", "/");
-
+        getSdfParam<std::string>(_sdf, "audioLinkTopic", blast3d_audio_topic_,
+                blast3d_audio_topic_);
+        getSdfParam<std::string>(_sdf, "customAudioDataFolder", blast3d_audio_datafolder_,
+                blast3d_audio_datafolder_);
         // READ THE AUDIO FILE FOR BACKGROUND
         // READ THE AUDIO FILE FOR BOOM
         std::string boom_file = "boom.wav";
@@ -79,7 +83,7 @@ namespace gazebo {
                 a.samples[channel][i] = a.samples[channel][i] * gain;
             }
         }        
-        audio_pub_ = node_handle_->Advertise<sensor_msgs::msgs::Audio>(topicName, 10);
+        audio_pub_ = node_handle_->Advertise<sensor_msgs::msgs::Audio>(blast3d_audio_topic_, 10);
         updateConnection_ = event::Events::ConnectWorldUpdateBegin(
                 boost::bind(&GazeboBlast3DMicrophonePlugin::OnUpdate, this, _1));
     }
@@ -102,7 +106,7 @@ namespace gazebo {
         
         //audio_message.set_time_usec(now.Double() * 1e6);
         //send message
-        audio_pub_->Publish(audio_message);
+        //audio_pub_->Publish(audio_message);
     }
 }
 /* vim: set et fenc=utf-8 ff=unix sts=0 sw=2 ts=2 : */

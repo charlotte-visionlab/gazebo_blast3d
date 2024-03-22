@@ -64,15 +64,28 @@ namespace gazebo {
 
         frame_id_ = link_name_;
 
+        getSdfParam<std::string>(_sdf, "blast3dPressureDataFolder", blast3d_pressure_datafolder_,
+                blast3d_pressure_datafolder_);
         getSdfParam<std::string>(_sdf, "blast3dServerRegisterLinkTopic", blast3d_server_reglink_topic_,
                 blast3d_server_reglink_topic_);
-        getSdfParam<std::string>(_sdf, "windServerLinkTopic", blast3d_server_link_topic_,
+        getSdfParam<std::string>(_sdf, "blast3dServerLinkTopic", blast3d_server_link_topic_,
                 blast3d_server_link_topic_);
 
-        // Wind topic publishing rates
-        double pub_rate = 2.0;
-        getSdfParam<double>(_sdf, "publishRate", pub_rate, pub_rate);
-        pub_interval_ = (pub_rate > 0.0) ? 1 / pub_rate : 0.0;
+        // Check if a custom static wind field should be used.
+//        getSdfParam<bool>(sdf, "useCustomBlastData", use_custom_blastdata_,
+//                          use_custom_blastdata_);
+//
+//        if (!use_custom_blastdata_) {
+//            gzdbg << "[gazebo_blast3d_world_plugin] Using standard blast models.\n";
+//        } else {
+//            gzdbg << "[gazebo_blast3d_world_plugin] Using custom blast models from data file.\n";
+            // Get the wind field text file path, read it and save data.
+//            std::string custom_blastdata_path;
+//            getSdfParam<std::string>(sdf, "customBlastDataFile", custom_blastdata_path,
+//                                     custom_blastdata_path);
+//
+//            ReadBlast3DData(custom_blastdata_path);
+//        }
 
         // Listen to the update event. This event is broadcast every simulation
         // iteration.
@@ -133,24 +146,34 @@ namespace gazebo {
         // ====== ANEMOMETER GAZEBO -> ROS MSG SETUP ======= //
         // ================================================= //
 
-//        anemometer_pub_ = node_handle_->Advertise<gz_sensor_msgs::msgs::Anemometer>(
-//                "~/" + namespace_ + "/" + anemometer_topic_, 1);
+        //        anemometer_pub_ = node_handle_->Advertise<gz_sensor_msgs::msgs::Anemometer>(
+        //                "~/" + namespace_ + "/" + anemometer_topic_, 1);
 
         // Create temporary "ConnectGazeboToRosTopic" publisher and message.
-//        gazebo::transport::PublisherPtr connect_gazebo_to_ros_topic_pub =
-//                node_handle_->Advertise<gz_std_msgs::ConnectGazeboToRosTopic>(
-//                "~/" + kConnectGazeboToRosSubtopic, 1);
-//        gz_std_msgs::ConnectGazeboToRosTopic connect_gazebo_to_ros_topic_msg;
-//        connect_gazebo_to_ros_topic_msg.set_gazebo_topic("~/" + namespace_ + "/" +
-//                anemometer_topic_);
-//        connect_gazebo_to_ros_topic_msg.set_ros_topic(namespace_ + "/" +
-//                anemometer_topic_);
-//        connect_gazebo_to_ros_topic_msg.set_msgtype(
-//                gz_std_msgs::ConnectGazeboToRosTopic::ANEMOMETER);
-//        connect_gazebo_to_ros_topic_pub->Publish(connect_gazebo_to_ros_topic_msg,
-//                true);
+        //        gazebo::transport::PublisherPtr connect_gazebo_to_ros_topic_pub =
+        //                node_handle_->Advertise<gz_std_msgs::ConnectGazeboToRosTopic>(
+        //                "~/" + kConnectGazeboToRosSubtopic, 1);
+        //        gz_std_msgs::ConnectGazeboToRosTopic connect_gazebo_to_ros_topic_msg;
+        //        connect_gazebo_to_ros_topic_msg.set_gazebo_topic("~/" + namespace_ + "/" +
+        //                anemometer_topic_);
+        //        connect_gazebo_to_ros_topic_msg.set_ros_topic(namespace_ + "/" +
+        //                anemometer_topic_);
+        //        connect_gazebo_to_ros_topic_msg.set_msgtype(
+        //                gz_std_msgs::ConnectGazeboToRosTopic::ANEMOMETER);
+        //        connect_gazebo_to_ros_topic_pub->Publish(connect_gazebo_to_ros_topic_msg,
+        //                true);
     }
 
+    void GazeboBlast3DModelPlugin::ReadBlast3DData(std::string &custom_blastdata_path) {
+        std::vector<std::vector<double>> data;
+        bool csvReadOK = readCSV(custom_blastdata_path, data);
+        if (!csvReadOK) {
+            gzerr << __FUNCTION__ << "[gazebo_blast3d_world_plugin] Could not open custom blast data CSV file." << std::endl;
+            return;
+        }
+        gzdbg << "[gazebo_blast3d_world_plugin] Successfully read custom blast data from text file.\n";
+    }
+    
     GZ_REGISTER_MODEL_PLUGIN(GazeboBlast3DModelPlugin);
 
 } // namespace gazebo

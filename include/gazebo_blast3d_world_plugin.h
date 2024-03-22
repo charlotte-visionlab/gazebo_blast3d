@@ -33,10 +33,12 @@
 
 #include "Blast3d.pb.h"
 #include "Blast3dServerRegistration.pb.h"
-#include "gazebo_blast3d_model_plugin.h"
+
+#include "utils/common.h"
 
 namespace gazebo {
-    // Default values   
+    // Constants and Default Values
+    static const bool kPrintOnPluginLoad = true;    
     static constexpr char TEST[] = "/gazebo/default/blast3d_register_link";
     static const std::string kDefaultBlast3dServerRegisterTopic = "/gazebo/default/blast3d_register_link";
 
@@ -78,53 +80,6 @@ namespace gazebo {
 
         void RegisterLinkCallback(Blast3dServerRegistrationPtr msg);
 
-        template <typename T>
-        bool readCSV(std::string datafile_path, std::vector<std::vector<T>> &data) {
-            std::ifstream fin;
-            fin.open(datafile_path);
-            if (!fin.is_open()) {
-                gzerr << __FUNCTION__ << "Error reading file " << datafile_path << std::endl;
-                return false;
-            }
-            // Read the data from the file
-            std::string line;
-            double dvalue;
-            int linenum = 0;
-            while (getline(fin, line)) {
-                linenum++;
-                //std::cout << "read line[" << linenum << "]: " << line << std::endl;
-                std::vector<double> row;
-                std::string value;
-                std::stringstream ss(line);
-                bool lineOK = true;
-
-                //std::cout << "line[" << linenum << "] = {";
-                while (getline(ss, value, ',')) {
-                    double dvalue;
-                    try {
-                        dvalue = std::stod(value);
-                    } catch (...) {
-                        //                        gzdbg << "[gazebo_wind3d_world_plugin] Could not convert string to double, skipping value on line " << linenum
-                        //                                << std::endl;
-                        //                        gzdbg << "[gazebo_wind3d_world_plugin] line[" << linenum << "]=" << line << std::endl;
-                        lineOK = false;
-                        break;
-                    }
-                    row.push_back(dvalue);
-                    //std::cout << dvalue << ", ";
-                }
-                //std::cout << std::endl;
-                if (lineOK) {
-                    //std::cout << "(X,Y,Z), (U,V,W) = " <<
-                    //          "(" << row[0] << ", " << row[1] << ", " << row[2] << "), " <<
-                    //          "(" << row[3] << ", " << row[4] << ", " << row[5] << ")" << std::endl;
-                    data.push_back(row);
-                }
-            }
-            fin.close();
-            return true;
-        }
-
         /// \brief Pointer to the update event connection.
         event::ConnectionPtr update_connection_;
 
@@ -133,13 +88,6 @@ namespace gazebo {
         std::string blast3d_server_reglink_topic_;
 
         common::Time last_time_;
-
-        /// \brief    Variables for custom wind field generation.
-        bool use_custom_blastdata_;
-
-        /// \brief  Reads wind data from a text file and saves it.
-        /// \param[in] custom_wind_field_path Path to the wind field from ~/.ros.
-        void ReadBlast3DData(std::string &custom_wind_field_path);
 
         transport::NodePtr node_handle_;
         transport::PublisherPtr blast_pub_;

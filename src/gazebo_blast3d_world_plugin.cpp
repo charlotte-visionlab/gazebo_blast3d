@@ -23,27 +23,15 @@ namespace gazebo {
     }
 
     void GazeboBlast3DWorldPlugin::Load(physics::WorldPtr world, sdf::ElementPtr sdf) {
+        if (kPrintOnPluginLoad) {
+            gzdbg << __FUNCTION__ << "() called." << std::endl;
+        }
         world_ = world;
 
         node_handle_ = transport::NodePtr(new transport::Node());
         node_handle_->Init();
 
         getSdfParam<std::string>(sdf, "blast3dServerRegisterLinkTopic", blast3d_server_reglink_topic_, blast3d_server_reglink_topic_);
-        // Check if a custom static wind field should be used.
-        getSdfParam<bool>(sdf, "useCustomBlastData", use_custom_blastdata_,
-                          use_custom_blastdata_);
-
-        if (!use_custom_blastdata_) {
-            gzdbg << "[gazebo_blast3d_world_plugin] Using standard blast models.\n";
-        } else {
-            gzdbg << "[gazebo_blast3d_world_plugin] Using custom blast models from data file.\n";
-            // Get the wind field text file path, read it and save data.
-            std::string custom_blastdata_path;
-            getSdfParam<std::string>(sdf, "customBlastDataFile", custom_blastdata_path,
-                                     custom_blastdata_path);
-
-            ReadBlast3DData(custom_blastdata_path);
-        }
 
         // Listen to the update event. This event is broadcast every
         // simulation iteration.
@@ -102,9 +90,6 @@ namespace gazebo {
         }
 
         last_time_ = now;
-        if (!use_custom_blastdata_) {
-        } else {
-        }
     }
 
     void GazeboBlast3DWorldPlugin::CreatePubsAndSubs() {
@@ -112,16 +97,6 @@ namespace gazebo {
         blast3d_register_sub_ = node_handle_->Subscribe<blast3d_msgs::msgs::Blast3dServerRegistration>(blast3d_server_reglink_topic_,
                 &GazeboBlast3DWorldPlugin::RegisterLinkCallback, this);
         
-    }
-
-    void GazeboBlast3DWorldPlugin::ReadBlast3DData(std::string &custom_blastdata_path) {
-        std::vector<std::vector<double>> data;
-        bool csvReadOK = readCSV(custom_blastdata_path, data);
-        if (!csvReadOK) {
-            gzerr << __FUNCTION__ << "[gazebo_blast3d_world_plugin] Could not open custom blast data CSV file." << std::endl;
-            return;
-        }
-        gzdbg << "[gazebo_blast3d_world_plugin] Successfully read custom blast data from text file.\n";
     }
 
     GZ_REGISTER_WORLD_PLUGIN(GazeboBlast3DWorldPlugin);

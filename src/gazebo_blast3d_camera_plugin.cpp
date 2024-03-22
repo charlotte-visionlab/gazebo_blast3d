@@ -54,7 +54,10 @@ GazeboBlast3DCameraPlugin::~GazeboBlast3DCameraPlugin() {
 void GazeboBlast3DCameraPlugin::Load(sensors::SensorPtr _sensor, sdf::ElementPtr _sdf) {
     if (!_sensor)
         gzerr << "Invalid sensor pointer.\n";
-
+    if (kPrintOnPluginLoad) {
+        gzdbg << __FUNCTION__ << "() called." << std::endl;
+    }
+    
     this->parentSensor = std::dynamic_pointer_cast<sensors::CameraSensor>(_sensor);
 
     if (!this->parentSensor) {
@@ -126,6 +129,13 @@ void GazeboBlast3DCameraPlugin::Load(sensors::SensorPtr _sensor, sdf::ElementPtr
         boost::replace_all(topicName, "::", "/");
         imuSub_ = node_handle_->Subscribe(topicName, &GazeboBlast3DCameraPlugin::ImuCallback, this);
     }
+
+    getSdfParam<std::string>(_sdf, "blast3dImageTopic", blast3d_image_topic_,
+            blast3d_image_topic_);
+    getSdfParam<std::string>(_sdf, "blast3dEventTopic", blast3d_event_topic_,
+            blast3d_event_topic_);
+    getSdfParam<std::string>(_sdf, "blast3dVideoDataFolder", blast3d_video_datafolder_,
+            blast3d_video_datafolder_);
 
     string topicName = "~/" + scopedName + "/opticalFlow";
     boost::replace_all(topicName, "::", "/");
@@ -210,6 +220,7 @@ void GazeboBlast3DCameraPlugin::OnNewFrameOpticalFlow(const unsigned char * _ima
 }
 
 /////////////////////////////////////////////////
+
 void GazeboBlast3DCameraPlugin::OnNewFrameEventCamera(const unsigned char * _image,
         unsigned int _width,
         unsigned int _height,
@@ -230,13 +241,13 @@ void GazeboBlast3DCameraPlugin::OnNewFrameEventCamera(const unsigned char * _ima
     //calculate angular flow
     //  int quality = optical_flow_->calcFlow((uchar*)_image, frame_time_us_, dt_us_, flow_x_ang, flow_y_ang);
     int quality = 0;
-    
+
     // COMPUTE NORMAL EVENTS
     // STUFF GOES HERE
 
     // IF AN EXPLOSION IS IN PROGRESS
     // ADD PIXEL DATA COMPUTE PROJECTION OF EXPLOSION INTO THIS CAMERA
-    
+
     if (quality >= 0) { // calcFlow(...) returns -1 if data should not be published yet -> output_rate
         //prepare optical flow message
         // Get the current simulation time.
@@ -254,7 +265,7 @@ void GazeboBlast3DCameraPlugin::OnNewFrameEventCamera(const unsigned char * _ima
         sensor_msgs::msgs::Event* event_msg = new sensor_msgs::msgs::Event();
         eventCamera_message.mutable_events()->AddAllocated(event_msg);
         //send message
-        eventCamera_pub_->Publish(eventCamera_message);
+        //eventCamera_pub_->Publish(eventCamera_message);
     }
 }
 

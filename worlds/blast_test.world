@@ -30,8 +30,6 @@ gz model --verbose --spawn-file="${modelpath}/${model}/${model_name}.sdf" --mode
     <!-- -->
     <plugin name='blast3d_plugin' filename='libgazebo_blast3d_world_plugin.so'>
       <blast3dServerRegisterLinkTopic>/gazebo/default/world_blast3d_register_link</blast3dServerRegisterLinkTopic>
-      <useCustomBlastData>true</useCustomBlastData>
-      <customBlastDataFile>/home.local/local-arwillis/asr_project/third_party/px4_gazebo_wind3d/datasets/openfoam_dataset_0.csv</customBlastDataFile>
     </plugin>
     <!-- -->
     <gravity>0 0 -9.8066</gravity>
@@ -57,7 +55,7 @@ gz model --verbose --spawn-file="${modelpath}/${model}/${model_name}.sdf" --mode
       <magnetic_field>6.0e-6 2.3e-5 -4.2e-5</magnetic_field>
     </physics>
     <model name='unit_sphere'>
-      <pose>0.013103 0.035528 1 0 -0 0</pose>
+      <pose>1.0 1.0 1.0 0 -0 0</pose>
       <link name='base_link2'>
         <inertial>
           <mass>0.1</mass>
@@ -106,23 +104,15 @@ gz model --verbose --spawn-file="${modelpath}/${model}/${model_name}.sdf" --mode
         </visual>
         <self_collide>0</self_collide>
         <enable_gravity>1</enable_gravity>
-        <enable_wind>1</enable_wind>
-        <wind>
-          <x>10</x>
-          <y>10</y>
-          <z>10</z>
-        </wind>
         <kinematic>0</kinematic>
         <plugin name='gazebo_blast3d_plugin' filename='libgazebo_blast3d_model_plugin.so'>
           <robotNamespace></robotNamespace>
           <frameId>world</frameId>
           <linkName>/sphere/base_link2</linkName>
-          <publishRate>5</publishRate>
-          <blast3dServerRegisterLinkTopic>/gazebo/default/world_wind_register_link</blast3dServerRegisterLinkTopic>
-          <blast3dServerLinkTopic>/gazebo/default/sphere_wind</blast3dServerLinkTopic>
+          <blast3dServerRegisterLinkTopic>/gazebo/default/blast3d_register_link</blast3dServerRegisterLinkTopic>
+          <blast3dServerLinkTopic>/gazebo/default/sphere_blast3d</blast3dServerLinkTopic>
         </plugin>
       </link>
-      <enable_wind>true</enable_wind>
       <static>false</static>
     </model>
   </world>

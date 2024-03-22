@@ -217,13 +217,13 @@ set(sensor_msgs
   )
 
 set(blast3d_msgs
+    msgs/Audio.proto
     msgs/Blast3d.proto
     msgs/Blast3dServerRegistration.proto
-    msgs/Header.proto
     msgs/Event.proto
     msgs/EventArray.proto
+    msgs/Header.proto
     msgs/OpticalFlow.proto
-    msgs/Audio.proto
   )
 
 #PROTOBUF_GENERATE_CPP(MAV_PROTO_SRCS MAV_PROTO_HDRS ${mav_msgs})
@@ -246,7 +246,7 @@ add_library(blast3d_msgs SHARED ${BLAST3D_PROTO_SRCS})
 
 #link_libraries(mav_msgs nav_msgs physics_msgs std_msgs sensor_msgs)
 
-add_library(gazebo_blast3d_camera_plugin SHARED src/gazebo_blast3d_camera_plugin.cpp)
+add_library(gazebo_blast3d_camera_plugin SHARED src/gazebo_blast3d_camera_plugin.cpp )
 
 add_library(gazebo_blast3d_microphone_plugin SHARED src/gazebo_blast3d_microphone_plugin.cpp)
 
@@ -262,14 +262,14 @@ set(plugins
   )
 
 foreach(plugin ${plugins})
-  target_link_libraries(${plugin} ${Boost_LIBRARIES} ${GAZEBO_LIBRARIES} ${TinyXML_LIBRARIES})
+  target_link_libraries(${plugin} ${Boost_LIBRARIES} ${GAZEBO_LIBRARIES} ${TinyXML_LIBRARIES} blast3d_msgs)
 endforeach()
 
 
-foreach(plugin ${plugins})
+#foreach(plugin ${plugins})
 #  add_dependencies(${plugin} mav_msgs nav_msgs physics_msgs std_msgs sensor_msgs)
-  add_dependencies(${plugin} blast3d_msgs)
-endforeach()
+#  add_dependencies(${plugin} blast3d_msgs)
+#endforeach()
 
 # Configure the setup script
 if (catkin_FOUND)

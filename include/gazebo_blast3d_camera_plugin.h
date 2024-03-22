@@ -53,7 +53,7 @@
 
 //#include "optical_flow.hpp"
 //#include "trackFeatures.h"
-
+#include "utils/common.h"
 
 #define DEFAULT_OUTPUT_RATE 15
 #define DEFAULT_IMAGE_WIDTH 64
@@ -139,7 +139,9 @@ using namespace std;
 
 namespace gazebo
 {
-  static const std::string kDefaultGyroTopic = "/px4flow/imu";
+    // Constants
+    static const bool kPrintOnPluginLoad = true;
+    static const std::string kDefaultGyroTopic = "/px4flow/imu";
 
   class GAZEBO_VISIBLE GazeboBlast3DCameraPlugin : public SensorPlugin
   {
@@ -173,6 +175,8 @@ namespace gazebo
       ignition::math::Vector3d opticalFlow_rate;
       std::string namespace_;
       std::string gyro_sub_topic_;
+      std::string blast3d_video_datafolder_;
+      std::string blast3d_image_topic_, blast3d_event_topic_;
       OpticalFlowOpenCV *optical_flow_;
       // OpticalFlowPX4 *optical_flow_;
 
