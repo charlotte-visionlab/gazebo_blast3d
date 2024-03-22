@@ -190,15 +190,6 @@ gazebo_blast3d/xacro$ gz sdf -p iris.urdf > iris.sdf
             <blast3dEventTopic>event_stream</blast3dEventTopic>            
         </plugin>
       </sensor>
-      <sensor type="sonar" name="microphone_1">
-        <pose>0 0 0 0 -0 0</pose>
-        <update_rate>5</update_rate>
-        <always_on>1</always_on>
-        <plugin name="microphone_1_plugin" filename="libgazebo_blast3d_microphone_plugin.so">
-            <audioLinkTopic>audio</audioLinkTopic>
-            <customAudioDataFolder>/home2/arwillis/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/audio</customAudioDataFolder>
-        </plugin>
-      </sensor>
       </link>
       <joint name='sensor_joint' type='fixed'>
         <child>sensor_link</child>
@@ -330,6 +321,13 @@ gazebo_blast3d/xacro$ gz sdf -p iris.urdf > iris.sdf
       <windServerLinkTopic>/gazebo/default/dynamics_wind</windServerLinkTopic>
     </plugin>
     -->
+    <plugin name="microphone_1_plugin" filename="libgazebo_blast3d_microphone_plugin.so">
+      <robotNamespace></robotNamespace>
+      <frameId>world</frameId>
+      <linkName>/base_link</linkName>
+      <audioLinkTopic>audio</audioLinkTopic>
+      <customAudioDataFolder>/home2/arwillis/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/audio</customAudioDataFolder>
+    </plugin>
     <plugin name='gazebo_blast3d_model_plugin' filename='libgazebo_blast3d_model_plugin.so'>
       <robotNamespace></robotNamespace>
       <frameId>world</frameId>

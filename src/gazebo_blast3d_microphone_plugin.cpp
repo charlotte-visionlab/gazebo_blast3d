@@ -26,10 +26,13 @@ using namespace std;
 
 namespace gazebo {
 
-    GZ_REGISTER_SENSOR_PLUGIN(GazeboBlast3DMicrophonePlugin)
+    GZ_REGISTER_MODEL_PLUGIN(GazeboBlast3DMicrophonePlugin)
 
     /////////////////////////////////////////////////
-    GazeboBlast3DMicrophonePlugin::GazeboBlast3DMicrophonePlugin() : SensorPlugin() {
+    GazeboBlast3DMicrophonePlugin::GazeboBlast3DMicrophonePlugin() :
+    frame_id_(kDefaultFrameId),
+    link_name_(kDefaultLinkName),
+    ModelPlugin() {
 
     }
 
@@ -41,17 +44,44 @@ namespace gazebo {
 
     /////////////////////////////////////////////////
 
-    void GazeboBlast3DMicrophonePlugin::Load(sensors::SensorPtr _sensor, sdf::ElementPtr _sdf) {
-        if (!_sensor)
+    void GazeboBlast3DMicrophonePlugin::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf) {
+        if (!_model)
             gzerr << "Invalid sensor pointer.\n";
         if (kPrintOnPluginLoad) {
             gzdbg << __FUNCTION__ << "() called." << std::endl;
         }
-        
+
+        // Store the pointer to the model and the world.
+        model_ = _model;
+        world_ = model_->GetWorld();
+
+        //==============================================//
+        //========== READ IN PARAMS FROM SDF ===========//
+        //==============================================//
+
+        // Use the robot namespace to create the node handle.
         if (_sdf->HasElement("robotNamespace"))
             namespace_ = _sdf->GetElement("robotNamespace")->Get<std::string>();
         else
-            gzwarn << "[gazebo_optical_flow_plugin] Please specify a robotNamespace.\n";
+            gzerr << "[gazebo_microphone_plugin] Please specify a robotNamespace.\n";
+
+        // Get node handle.
+        node_handle_ = transport::NodePtr(new transport::Node());
+
+        // Initialize with default namespace (typically /gazebo/default/).
+        node_handle_->Init(namespace_);
+
+        if (_sdf->HasElement("linkName"))
+            link_name_ = _sdf->GetElement("linkName")->Get<std::string>();
+        else
+            gzerr << "[gazebo_microphone_plugin] Please specify a linkName.\n";
+
+        // Get the pointer to the link.
+        link_ = model_->GetLink(link_name_);
+        if (link_ == NULL)
+            gzthrow("[gazebo_microphone_plugin] Couldn't find specified link \"" << link_name_ << "\".");
+
+        frame_id_ = link_name_;
 
         node_handle_ = transport::NodePtr(new transport::Node());
         node_handle_->Init(namespace_);
@@ -65,24 +95,22 @@ namespace gazebo {
         std::string boom_file = "boom.wav";
         std::string background_file = "background_loop.wav";
         AudioFile<float> a;
-        bool loadedOK = a.load (boom_file);
-        
+        bool loadedOK = a.load(boom_file);
+
         /** If you hit this assert then the file path above
          probably doesn't refer to a valid audio file */
-        assert (loadedOK);
-        
+        assert(loadedOK);
+
         //---------------------------------------------------------------
         // 3. Let's apply a gain to every audio sample
-        
+
         float gain = 0.5f;
 
-        for (int i = 0; i < a.getNumSamplesPerChannel(); i++)
-        {
-            for (int channel = 0; channel < a.getNumChannels(); channel++)
-            {
+        for (int i = 0; i < a.getNumSamplesPerChannel(); i++) {
+            for (int channel = 0; channel < a.getNumChannels(); channel++) {
                 a.samples[channel][i] = a.samples[channel][i] * gain;
             }
-        }        
+        }
         audio_pub_ = node_handle_->Advertise<sensor_msgs::msgs::Audio>(blast3d_audio_topic_, 10);
         updateConnection_ = event::Events::ConnectWorldUpdateBegin(
                 boost::bind(&GazeboBlast3DMicrophonePlugin::OnUpdate, this, _1));
@@ -93,17 +121,17 @@ namespace gazebo {
     void GazeboBlast3DMicrophonePlugin::OnUpdate(const common::UpdateInfo& _info) {
 
         // Get the current simulation time.
-//#if GAZEBO_MAJOR_VERSION >= 9
-//        common::Time now = world->SimTime();
-//#else
-//        common::Time now = world->GetSimTime();
-//#endif
+#if GAZEBO_MAJOR_VERSION >= 9
+        common::Time now = world_->SimTime();
+#else
+        common::Time now = world_->GetSimTime();
+#endif
         // COMPUTE TIME INDEX IN BACKGROUND
         // ADD NEXT CHUNK OF BACKGROUND AUDIO
-                
+
         // IF SEISMIC_BOOM ADD SEISMIC_BOOM AUDIO
         // IF AIR_BOOM ADD AIR_BOOM AUDIO
-        
+
         //audio_message.set_time_usec(now.Double() * 1e6);
         //send message
         //audio_pub_->Publish(audio_message);
