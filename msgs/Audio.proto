@@ -2,7 +2,6 @@ syntax = "proto2";
 package sensor_msgs.msgs;
 
 import "Header.proto";
-import "Event.proto";
 
 // Audio message type which is emitted by the microphone plugin
 message Audio

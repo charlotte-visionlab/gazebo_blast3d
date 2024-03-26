@@ -98,25 +98,6 @@ namespace gazebo {
 //        bool load (std::string filePath);
         LoadAudioFiles(background_file, bomb_file);
         
-//        std::string boom_file = "boom.wav";
-//        std::string background_file = "background_loop.wav";
-//        AudioFile<float> a;
-//        bool loadedOK = a.load(boom_file);
-
-        /** If you hit this assert then the file path above
-         probably doesn't refer to a valid audio file */
-//        assert(loadedOK);
-
-        //---------------------------------------------------------------
-        // 3. Let's apply a gain to every audio sample
-
-//        float gain = 0.5f;
-//
-//        for (int i = 0; i < a.getNumSamplesPerChannel(); i++) {
-//            for (int channel = 0; channel < a.getNumChannels(); channel++) {
-//                a.samples[channel][i] = a.samples[channel][i] * gain;
-//            }
-//        }
         audio_pub_ = node_handle_->Advertise<sensor_msgs::msgs::Audio>(blast3d_audio_topic_, 10);
         updateConnection_ = event::Events::ConnectWorldUpdateBegin(
                 boost::bind(&GazeboBlast3DMicrophonePlugin::OnUpdate, this, _1));
@@ -146,13 +127,16 @@ namespace gazebo {
         // Check for explosion trigger and play bomb audio if triggered.
         if (explosion_triggered_) {
             // IF SEISMIC_BOOM ADD SEISMIC_BOOM AUDIO
-//                PublishAudioMessage(bomb_audio_.samples[0], bomb_audio_.getNumChannels(), bomb_audio_.getSampleRate());
-    
-            // IF AIR_BOOM ADD AIR_BOOM AUDIO
-            //audio_message.set_time_usec(now.Double() * 1e6);
-            //send message
-            //audio_pub_->Publish(audio_message);
-//             PublishAudioMessage(bomb_audio_.samples[0], bomb_audio_.getNumChannels(), bomb_audio_.getSampleRate());
+//            AudioFile<float> seismicAudio = bomb_audio_;
+//            // seismicAudio.samples is float vector
+//            // padding zeros to this vector
+//            PublishAudioMessage(seismicAudio);
+//    
+//            // IF AIR_BOOM ADD AIR_BOOM AUDIO
+//            AudioFile<float> airBoomAudio = bomb_audio_;
+//            // seismicAudio.samples is float vector
+//            // padding zeros to this vector
+//            PublishAudioMessage(airBoomAudio);
          
             explosion_triggered_ = false; // Reset the trigger after playing the bomb audio.
         }
@@ -175,57 +159,49 @@ namespace gazebo {
     }
 
     /////////////////////////////////////////////////
-
+    
     void GazeboBlast3DMicrophonePlugin::PublishAudioMessage(AudioFile<float> background_audio_) {
         
-        sensor_msgs::msgs::Audio audio_msg;
         
         int bitDepth = background_audio_.getBitDepth();
         float sampleRate = background_audio_.getSampleRate();
         std::vector<float> sampleData = background_audio_.samples[0]; // in the channel 0
-        int numChannels = background_audio_.getNumChannels();
+        int numChannels = background_audio_.getNumChannels();    
+        size_t numBytes = sampleData.size() * sizeof(float);
         
-        // Set the header information
-//        gz_std_msgs::Header* header = new gz_std_msgs::Header();
-//        header->set_frame_id(frame_id_);
-//        audio_msg.set_allocated_header(header);
-//        audio_msg.set_frame_id(frame_id_);
-//        audio_msg.set_samplerate(samplerate);
-//        audio_msg.set_channels(num_channels);
-//        audio_pub_->Publish(audio_msg);
+#if GAZEBO_MAJOR_VERSION >= 9
+        common::Time now = world_->SimTime();
+#else
+        common::Time now = world_->GetSimTime();
+#endif
+        
+        audio_message.mutable_header()->mutable_stamp()->set_sec(
+                    now.Double());
+        audio_message.mutable_header()->mutable_stamp()->set_nsec(
+                    now.Double() * 1e9);
+        audio_message.mutable_header()->set_frame_id("drone");
+        audio_message.set_samplerate(sampleRate);
+        audio_message.add_sampledata(reinterpret_cast<const char*>(sampleData.data()), numBytes);
+        audio_message.set_bitspersample(bitDepth);
 
-//        bool load (std::string filePath);
-//        // save the audio in AudioFile format into disk for verification
-//        audioFile.save (blast3d_audio_datafolder_ + "audioFile.wav", AudioFileFormat::Wave);
-//        bool save (std::string filePath, AudioFileFormat format = AudioFileFormat::Wave);
+        audio_pub_->Publish(audio_message);
         
-        // 1. Let's setup our AudioFile instance
-        
-        AudioFile<float> a;
-        a.setNumChannels (numChannels);
-        a.setNumSamplesPerChannel (sampleData.size());
-        a.setBitDepth (bitDepth);
-
-        //---------------------------------------------------------------
-        // 2. Create some variables to help us generate a sine wave
-        
-//        const float sampleRate = sampleRate;
-//        const float frequencyInHz = sampleRate / 1000.f;
-        
-        //---------------------------------------------------------------
-        // 3. Write the samples to the AudioFile sample buffer
-        
-        for (int i = 0; i < a.getNumSamplesPerChannel(); i++)
-        {
-            for (int channel = 0; channel < a.getNumChannels(); channel++)
-            {
-                a.samples[channel][i] = background_audio_.samples[channel][i] * 2;
-            }
-        }
-        
-        std::string filePath = blast3d_audio_datafolder_ + "audioFile.wav"; // change this to somewhere useful for you
-        a.save ("audioFile.wav", AudioFileFormat::Wave);
+        // For Debugging, by saving a newly generated audio file with gain:
+//        AudioFile<float> a;
+//        a.setNumChannels (numChannels);
+//        a.setNumSamplesPerChannel (sampleData.size());
+//        a.setBitDepth (bitDepth);
+//        
+//        for (int i = 0; i < a.getNumSamplesPerChannel(); i++)
+//        {
+//            for (int channel = 0; channel < a.getNumChannels(); channel++)
+//            {
+//                a.samples[channel][i] = background_audio_.samples[channel][i] * 2;
+//            }
+//        }
+//        
+//        std::string filePath = blast3d_audio_datafolder_ + "newaudioFile.wav"; // change this to somewhere useful for you
+//        a.save ("newaudioFile.wav", AudioFileFormat::Wave);
     }
-
 }
 /* vim: set et fenc=utf-8 ff=unix sts=0 sw=2 ts=2 : */
