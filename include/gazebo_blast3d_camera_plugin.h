@@ -47,8 +47,6 @@
 
 #pragma once
 
-#include <iostream>
-#include <opencv2/opencv.hpp>
 #include <cmath>
 
 //#include "optical_flow.hpp"
@@ -141,7 +139,7 @@ namespace gazebo
 {
     // Constants
     static const bool kPrintOnPluginLoad = true;
-    static const std::string kDefaultGyroTopic = "/px4flow/imu";
+  static const std::string kDefaultGyroTopic = "/px4flow/imu";
 
   class GAZEBO_VISIBLE GazeboBlast3DCameraPlugin : public SensorPlugin
   {
@@ -154,8 +152,13 @@ namespace gazebo
                               unsigned int _depth, const std::string &_format);
       virtual void OnNewFrameEventCamera(const unsigned char *_image,
                               unsigned int _width, unsigned int _height,
-                              unsigned int _depth, const std::string &_format);
-      void ImuCallback(ConstIMUPtr& _imu);
+                              unsigned int _depth, const std::string &_format,
+                              const std::string &blast3d_video_datafolder_);
+      virtual void ImuCallback(ConstIMUPtr& _imu);
+      virtual void processDelta(cv::Mat *last_image, cv::Mat *curr_image, cv::Mat *last_blast_image, 
+                                cv::Mat *curr_blast_image, std::vector<sensor_msgs::msgs::Event> *events,
+                                bool explosion=false);
+      virtual void fillEvents(cv::Mat *diff, int polarity, vector<sensor_msgs::msgs::Event> *events);
 
     protected:
       unsigned int width, height, depth;
@@ -166,11 +169,18 @@ namespace gazebo
 
     private:
       event::ConnectionPtr newFrameConnection;
+      cv::Mat last_image;
+      cv::Mat last_blast_image;
+      int last_blast_image_idx;
+      bool has_last_image;
+      bool has_last_blast_image;
+      float event_threshold;
       transport::PublisherPtr opticalFlow_pub_;
       transport::PublisherPtr eventCamera_pub_;
       transport::NodePtr node_handle_;
       transport::SubscriberPtr imuSub_;
-      sensor_msgs::msgs::EventArray eventCamera_message;
+      sensor_msgs::msgs::Event eventCameraEvent_message;
+      sensor_msgs::msgs::EventArray eventCameraEventArray_message;
       sensor_msgs::msgs::OpticalFlow opticalFlow_message;
       ignition::math::Vector3d opticalFlow_rate;
       std::string namespace_;

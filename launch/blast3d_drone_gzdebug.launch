@@ -2,7 +2,8 @@
 <launch>
     <!-- SET THIS VARIABLE TO YOUR ROOT FOLDER -->
     <!-- <arg name="PROJECT_IMAGE_ROOT"                    default="/home.md1/server/DEFENSEWERX/jzhang72/asr_project"/> -->
-    <arg name="PROJECT_IMAGE_ROOT"                default="/home2/arwillis/uncc_wind_control"/>
+    <!-- <arg name="PROJECT_IMAGE_ROOT"                default="/home2/arwillis/uncc_wind_control"/> -->
+    <arg name="PROJECT_IMAGE_ROOT"                default="/home.md2/sparab2/wind/uncc_wind_control"/>
     
     <arg name="run_qgroundcontrol"                default="true"/>
     <arg name="run_rviz"                          default="true"/>
@@ -20,6 +21,11 @@
         export GAZEBO_PLUGIN_PATH=/home2/arwillis/uncc_wind_control/ros_image/ros_ws/devel/lib:${GAZEBO_PLUGIN_PATH}
         export GAZEBO_MODEL_PATH=/home2/arwillis/uncc_wind_control/third_party/PX4-Autopilot/Tools/simulation/gazebo-classic/sitl_gazebo-classic/models/:/home2/arwillis/uncc_wind_control/ros_image/ros_ws/src/px4_gazebo_wind3d/models:$GAZEBO_MODEL_PATH
         export LD_LIBRARY_PATH=/home2/arwillis/uncc_wind_control/ros_image/ros_ws/devel/lib:${LD_LIBRARY_PATH}
+    -->
+    <!--
+        From the ROS workspace folder run the following two commmands:
+         export ROS_PACKAGE_PATH=$(pwd)/../../third_party/PX4-Autopilot:$(pwd)/../../third_party/PX4-Autopilot/Tools/simulation/gazebo-classic/sitl_gazebo-classic:$ROS_PACKAGE_PATH
+         source $(pwd)/../../third_party/PX4-Autopilot/Tools/simulation/gazebo-classic/setup_gazebo.bash $(pwd)/../../third_party/PX4-Autopilot $(pwd)/../../third_party/PX4-Autopilot/build/px4_sitl_default
     -->
 
     <!-- Posix SITL environment launch script -->
@@ -57,7 +63,7 @@
     <arg unless="$(arg interactive)" name="px4_command_arg1" value="-d"/>
     <arg     if="$(arg interactive)" name="px4_command_arg1" value=""/>
     <node name="sitl" pkg="px4" type="px4" output="screen"
-        args="$(find px4)/build/px4_sitl_default/etc -s etc/init.d-posix/rcS $(arg px4_command_arg1)" required="true"/>
+        args="$(find px4)/build/px4_sitl_default/etc -s etc/init.d-posix/rcS $(arg px4_command_arg1)" required="false"/>
     
     <arg name="existing_gazebo_plugin_path" default="$(optenv GAZEBO_PLUGIN_PATH)" />
     <arg name="existing_ld_library_path" default="$(optenv LD_LIBRARY_PATH)" />

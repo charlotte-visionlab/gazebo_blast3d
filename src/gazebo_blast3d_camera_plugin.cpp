@@ -38,7 +38,7 @@ GZ_REGISTER_SENSOR_PLUGIN(GazeboBlast3DCameraPlugin)
 
 /////////////////////////////////////////////////
 GazeboBlast3DCameraPlugin::GazeboBlast3DCameraPlugin()
-: SensorPlugin(), width(0), height(0), depth(0) {
+: SensorPlugin(), width(0), height(0), depth(0), has_last_image(false),  has_last_blast_image(false){
 
 }
 
@@ -57,7 +57,7 @@ void GazeboBlast3DCameraPlugin::Load(sensors::SensorPtr _sensor, sdf::ElementPtr
     if (kPrintOnPluginLoad) {
         gzdbg << __FUNCTION__ << "() called." << std::endl;
     }
-    
+
     this->parentSensor = std::dynamic_pointer_cast<sensors::CameraSensor>(_sensor);
 
     if (!this->parentSensor) {
@@ -95,9 +95,9 @@ void GazeboBlast3DCameraPlugin::Load(sensors::SensorPtr _sensor, sdf::ElementPtr
 
     focal_length_ = (this->width / 2) / tan(hfov_ / 2);
 
-    if (this->width != 64 || this->height != 64) {
-        gzerr << "[gazebo_optical_flow_plugin] Incorrect image size, must by 64 x 64.\n";
-    }
+    //    if (this->width != 64 || this->height != 64) {
+    //        gzerr << "[gazebo_optical_flow_plugin] Incorrect image size, must by 64 x 64.\n";
+    //    }
 
     if (_sdf->HasElement("robotNamespace"))
         namespace_ = _sdf->GetElement("robotNamespace")->Get<std::string>();
@@ -137,20 +137,46 @@ void GazeboBlast3DCameraPlugin::Load(sensors::SensorPtr _sensor, sdf::ElementPtr
     getSdfParam<std::string>(_sdf, "blast3dVideoDataFolder", blast3d_video_datafolder_,
             blast3d_video_datafolder_);
 
-    string topicName = "~/" + scopedName + "/opticalFlow";
-    boost::replace_all(topicName, "::", "/");
+    string topicName;
 
     if (false) {
+        topicName = "~/" + scopedName + "/opticalFlow";
+        boost::replace_all(topicName, "::", "/");
         opticalFlow_pub_ = node_handle_->Advertise<sensor_msgs::msgs::OpticalFlow>(topicName, 10);
         this->newFrameConnection = this->camera->ConnectNewImageFrame(
                 boost::bind(&GazeboBlast3DCameraPlugin::OnNewFrameOpticalFlow,
                 this, _1, this->width, this->height, this->depth, this->format));
     } else {
+        topicName = blast3d_image_topic_;
+        boost::replace_all(topicName, "::", "/");
+//        eventCamera_pub_ = node_handle_->Advertise<sensor_msgs::msgs::Event>(topicName, 10);
+//        this->newFrameConnection = this->camera->ConnectNewImageFrame(
+//                boost::bind(&GazeboBlast3DCameraPlugin::OnNewFrameEventCamera,
+//                this, _1, this->width, this->height, this->depth, this->format));
         eventCamera_pub_ = node_handle_->Advertise<sensor_msgs::msgs::EventArray>(topicName, 10);
         this->newFrameConnection = this->camera->ConnectNewImageFrame(
                 boost::bind(&GazeboBlast3DCameraPlugin::OnNewFrameEventCamera,
-                this, _1, this->width, this->height, this->depth, this->format));
+                this, _1, this->width, this->height, this->depth, this->format, blast3d_video_datafolder_));
     }
+
+    string sensorName = "";
+    if (_sdf->HasElement("cameraName"))
+        sensorName = _sdf->GetElement("cameraName")->Get<std::string>() + "/";
+    else
+        gzwarn << "[gazebo_blast3d_camera_plugin] Please specify a cameraName." << endl;
+
+    //    string topicName = "events";
+    //    if (_sdf->HasElement("eventsTopicName"))
+    //      topicName = _sdf->GetElement("eventsTopicName")->Get<std::string>();
+
+    const string topic = sensorName + topicName;
+
+    if (_sdf->HasElement("eventThreshold"))
+        this->event_threshold = _sdf->GetElement("eventThreshold")->Get<float>();
+    else
+        gzwarn << "[gazebo_blast3d_camera_plugin] Please specify a DVS threshold." << endl;
+
+    //    event_pub_ = node_handle_.advertise<sensor_msgs::msgs::EventArray>(topic, 10, 10.0);
 
 
     this->parentSensor->SetActive(true);
@@ -225,7 +251,8 @@ void GazeboBlast3DCameraPlugin::OnNewFrameEventCamera(const unsigned char * _ima
         unsigned int _width,
         unsigned int _height,
         unsigned int _depth,
-        const std::string &_format) {
+        const std::string &_format,
+        const std::string &blast3d_video_datafolder_) {
 
     //get data depending on gazebo version
 #if GAZEBO_MAJOR_VERSION >= 7
@@ -242,11 +269,57 @@ void GazeboBlast3DCameraPlugin::OnNewFrameEventCamera(const unsigned char * _ima
     //  int quality = optical_flow_->calcFlow((uchar*)_image, frame_time_us_, dt_us_, flow_x_ang, flow_y_ang);
     int quality = 0;
 
-    // COMPUTE NORMAL EVENTS
-    // STUFF GOES HERE
+    // convert given frame to opencv image
+    cv::Mat input_image(_height, _width, CV_8UC3);
+    input_image.data = (uchar*) _image;
 
-    // IF AN EXPLOSION IS IN PROGRESS
-    // ADD PIXEL DATA COMPUTE PROJECTION OF EXPLOSION INTO THIS CAMERA
+    // color to grayscale
+    cv::Mat curr_image_rgb(_height, _width, CV_8UC3);
+    cv::cvtColor(input_image, curr_image_rgb, cv::COLOR_RGB2BGR);
+    cv::cvtColor(curr_image_rgb, input_image, cv::COLOR_BGR2GRAY);
+    //
+    cv::Mat curr_image = input_image;
+    cv::Mat curr_blast_image;
+
+    assert(_height == height && _width == width);
+    std::vector<sensor_msgs::msgs::Event> events;
+    
+    bool explosion = true;
+    if (this->has_last_image) {
+        if (!explosion) {
+            this->processDelta(&this->last_image, &curr_image, &this->last_blast_image, &curr_blast_image, &events);
+        }
+        else {
+            if (this->has_last_blast_image) {
+                int zero_padding_length = 4 - std::to_string(this->last_blast_image_idx).length();
+                int curr_blast_image_idx = this->last_blast_image_idx + 1;
+                std::string curr_blast_image_name = std::string(zero_padding_length, '0')
+                                                            + std::to_string(curr_blast_image_idx);
+                std::string curr_blast_image_path = blast3d_video_datafolder_ + "/" + curr_blast_image_name + ".png";
+                cv::Mat tmp = cv::imread(curr_blast_image_path, cv::IMREAD_GRAYSCALE);
+                
+                cv::resize(tmp, curr_blast_image, this->last_image.size());
+                this->processDelta(&this->last_image, &curr_image, &this->last_blast_image, &curr_blast_image, &events, explosion);
+                this->last_blast_image_idx += 1;
+                this->last_blast_image = curr_blast_image;
+                // reset last image when it exceeds the file range (currently having 61 images)
+                if (this->last_blast_image_idx >= 60) {
+                    this->last_blast_image_idx = 10;
+                }
+            } else {
+                std::string last_blast_image_filename = "/0010.png";
+                this->last_blast_image_idx = 10;
+                cv::Mat blast_image = cv::imread(blast3d_video_datafolder_ + last_blast_image_filename, cv::IMREAD_GRAYSCALE);
+                cv::resize(blast_image, this->last_blast_image, this->last_image.size());
+                this->has_last_blast_image = true;
+            } 
+        }
+    } else if (curr_image.size().area() > 0) {
+        this->last_image = curr_image;
+        this->has_last_image = true;
+    } else {
+        gzwarn << "Ignoring empty image." << endl;
+    }
 
     if (quality >= 0) { // calcFlow(...) returns -1 if data should not be published yet -> output_rate
         //prepare optical flow message
@@ -257,15 +330,104 @@ void GazeboBlast3DCameraPlugin::OnNewFrameEventCamera(const unsigned char * _ima
         common::Time now = world->GetSimTime();
 #endif
 
-        // Fill the anemometer message.
-        eventCamera_message.mutable_header()->mutable_stamp()->set_sec(
-                now.Double());
-        eventCamera_message.mutable_header()->mutable_stamp()->set_nsec(
-                now.Double() * 1e9);
-        sensor_msgs::msgs::Event* event_msg = new sensor_msgs::msgs::Event();
-        eventCamera_message.mutable_events()->AddAllocated(event_msg);
-        //send message
-        //eventCamera_pub_->Publish(eventCamera_message);
+        for (auto& event_msg : events) {
+            eventCameraEventArray_message.mutable_header()->mutable_stamp()->set_sec(
+                    now.Double());
+            eventCameraEventArray_message.mutable_header()->mutable_stamp()->set_nsec(
+                    now.Double() * 1e9);
+            eventCameraEventArray_message.mutable_header()->set_frame_id("drone");
+            eventCameraEventArray_message.set_width(_width); 
+            eventCameraEventArray_message.set_height(_height);
+    //        sensor_msgs::msgs::Event* event_msg = new sensor_msgs::msgs::Event();
+            eventCameraEventArray_message.mutable_events()->AddAllocated(new sensor_msgs::msgs::Event(event_msg));
+            //send message
+            eventCamera_pub_->Publish(eventCameraEventArray_message);
+        }
+    }
+}
+
+void GazeboBlast3DCameraPlugin::processDelta(cv::Mat *last_image, cv::Mat *curr_image, 
+        cv::Mat *last_blast_image, cv::Mat *curr_blast_image,
+        std::vector<sensor_msgs::msgs::Event> *events,
+        bool explosion) {
+    if (curr_image->size() == last_image->size()) {
+        
+        // camera image
+        cv::Mat pos_diff = *curr_image - *last_image;
+        cv::Mat neg_diff = *last_image - *curr_image;
+
+        cv::Mat pos_mask;
+        cv::Mat neg_mask;
+
+        cv::threshold(pos_diff, pos_mask, event_threshold, 255, cv::THRESH_BINARY);
+        cv::threshold(neg_diff, neg_mask, event_threshold, 255, cv::THRESH_BINARY);
+
+        *last_image += pos_mask & pos_diff;
+        *last_image -= neg_mask & neg_diff;
+        
+        cv::imshow("scene image", *curr_image);
+        cv::waitKey(200);
+        
+        
+        // blast image
+        if (explosion) {
+            cv::Mat blast_pos_diff = *curr_blast_image - *last_blast_image;
+            cv::Mat blast_neg_diff = *last_blast_image - *curr_blast_image;
+
+            cv::Mat blast_pos_mask;
+            cv::Mat blast_neg_mask;
+
+            cv::threshold(blast_pos_diff, blast_pos_mask, event_threshold, 255, cv::THRESH_BINARY);
+            cv::threshold(blast_neg_diff, blast_neg_mask, event_threshold, 255, cv::THRESH_BINARY);
+            
+            // TODO: requires double-check
+            *last_blast_image += blast_pos_mask & blast_pos_diff;
+            *last_blast_image -= blast_neg_mask & blast_neg_diff;
+            
+            // update the pos_mask and neg_mask with blast
+            cv::bitwise_or(pos_mask, blast_pos_mask, pos_mask);
+            cv::bitwise_or(neg_mask, blast_neg_mask, neg_mask);
+            
+        }
+        
+        this->fillEvents(&pos_mask, 0, events);
+        this->fillEvents(&neg_mask, 1, events);
+        
+        cv::Mat eventVis(pos_mask.size(), CV_8UC3, cv::Scalar(0, 0, 0));
+        cv::Mat ch1, ch2, ch3; // declare three matrices 
+        std::vector<cv::Mat> channels(3);
+        cv::split(eventVis, channels);
+        // get the channels (follow BGR order in OpenCV)
+        channels[0] = neg_mask * 255;
+        channels[2] = pos_mask * 255; 
+        // modify channel// then merge
+        cv::merge(channels, eventVis);
+        cv::imshow("event image", eventVis);
+        cv::waitKey(100);
+        
+        cv::imshow("blast image", *curr_blast_image);
+        cv::waitKey(200);
+        
+    } else {
+        gzwarn << "Unexpected change in image size (" << last_image->size() << " -> " << curr_image->size() << "). Publishing no events for this frame change." << endl;
+    }
+}
+
+void GazeboBlast3DCameraPlugin::fillEvents(cv::Mat *mask, int polarity, std::vector<sensor_msgs::msgs::Event> *events) {
+    // findNonZero fails when there are no zeros
+    // TODO is there a better workaround then iterating the binary image twice?
+    if (cv::countNonZero(*mask) != 0) {
+        std::vector<cv::Point> locs;
+        cv::findNonZero(*mask, locs);
+
+        for (int i = 0; i < locs.size(); i++) {
+            sensor_msgs::msgs::Event event;
+            event.set_x(locs[i].x);
+            event.set_y(locs[i].y);
+            event.set_time(frame_time_us_);
+            event.set_polarity(polarity);
+            events->push_back(event);
+        }
     }
 }
 

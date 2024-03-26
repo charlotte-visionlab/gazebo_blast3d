@@ -57,6 +57,15 @@ namespace gazebo {
         std::string namespace_;
         std::string blast3d_audio_topic_;
         std::string blast3d_audio_datafolder_;
+        
+        AudioFile<float> background_audio_;
+        AudioFile<float> bomb_audio_;
+        int background_audio_index_; // Index for the current position in the background audio.
+        bool explosion_triggered_; // Flag to indicate whether the explosion has been triggered.
+//        bool load (std::string filePath);
+
+        void LoadAudioFiles(const std::string& background_file, const std::string& bomb_file);
+        void PublishAudioMessage(AudioFile<float> background_audio_);
 
     };
 }
