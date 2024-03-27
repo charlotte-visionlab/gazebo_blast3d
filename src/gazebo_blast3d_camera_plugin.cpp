@@ -365,8 +365,9 @@ void GazeboBlast3DCameraPlugin::processDelta(cv::Mat *last_image, cv::Mat *curr_
         *last_image += pos_mask & pos_diff;
         *last_image -= neg_mask & neg_diff;
         
-        cv::imshow("scene image", *curr_image);
-        cv::waitKey(200);
+        // For Debug
+//        cv::imshow("scene image", *curr_image);
+//        cv::waitKey(200);
         
         
         // blast image
@@ -393,20 +394,23 @@ void GazeboBlast3DCameraPlugin::processDelta(cv::Mat *last_image, cv::Mat *curr_
         this->fillEvents(&pos_mask, 0, events);
         this->fillEvents(&neg_mask, 1, events);
         
-        cv::Mat eventVis(pos_mask.size(), CV_8UC3, cv::Scalar(0, 0, 0));
-        cv::Mat ch1, ch2, ch3; // declare three matrices 
-        std::vector<cv::Mat> channels(3);
-        cv::split(eventVis, channels);
-        // get the channels (follow BGR order in OpenCV)
-        channels[0] = neg_mask * 255;
-        channels[2] = pos_mask * 255; 
-        // modify channel// then merge
-        cv::merge(channels, eventVis);
-        cv::imshow("event image", eventVis);
-        cv::waitKey(100);
         
-        cv::imshow("blast image", *curr_blast_image);
-        cv::waitKey(200);
+        // For debug
+//        cv::Mat eventVis(pos_mask.size(), CV_8UC3, cv::Scalar(0, 0, 0));
+//        cv::Mat ch1, ch2, ch3; // declare three matrices 
+//        std::vector<cv::Mat> channels(3);
+//        cv::split(eventVis, channels);
+//        // get the channels (follow BGR order in OpenCV)
+//        channels[0] = neg_mask * 255;
+//        channels[2] = pos_mask * 255; 
+//        // modify channel// then merge
+//        cv::merge(channels, eventVis);
+//        cv::imshow("event image", eventVis);
+//        cv::waitKey(100);
+//        if (explosion) {
+//            cv::imshow("blast image", *curr_blast_image);
+//            cv::waitKey(200);
+//        }
         
     } else {
         gzwarn << "Unexpected change in image size (" << last_image->size() << " -> " << curr_image->size() << "). Publishing no events for this frame change." << endl;

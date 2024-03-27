@@ -117,55 +117,65 @@ namespace gazebo {
         // ADD NEXT CHUNK OF BACKGROUND AUDIO
         // Play the background audio.
         
-        PublishAudioMessage(background_audio_);
-        
         explosion_triggered_ = true;
         // Check for explosion trigger and play bomb audio if triggered.
         if (explosion_triggered_) {
+            
+            float sampleRate = background_audio_.getSampleRate();
+            
             double Q = 5;
-            double C_a = 340;  //air speed
-            double C_s = 6000;  //solid speed
+            double Ca = 340;  //air speed
+            double Cs = 6000;  //solid speed
             double h = 10;   //drone height
-            double d = 10;   //distance from the blast
+            double d = 30;   //distance from the blast
 
             //Time delay through air propagation
-            double air_dist = sqrt(pow(d, 2) + pow(h, 2));
-            double air_time_delay = 0.34 * pow(air_dist, (1.4)) * pow(Q, (-0.2)) / C_a;  //0.56 * d ^ 1.4 * Q ^ (-0.2) / 340
-    //        double air_time_delay_history = [air_time_delay_history air_time_delay];
-            double avg_air_speed = air_dist / air_time_delay;
+            double airDist = sqrt(d*d + h*h);
+            double airTimeDelay = 0.34 * pow(airDist, (1.4)) * pow(Q, (-0.2)) / Ca;
+            double avgAirSpeed = airDist / airTimeDelay;
 
-            // Time delay through ground propagation
-            double seismic_time_delay = 0.91 * pow(d, (1.03)) * pow(Q, (-0.02)) / C_s;  //0.52 * d ^ 1.26 / (C_s * Q^0.01);
-    //        double seismic_time_delay_history = [seismic_time_delay_history seismic_time_delay];
-            double seismic_to_air_time_delay = h / avg_air_speed;
-            double seismic_air_time_delay = seismic_time_delay + seismic_to_air_time_delay;
-    //        double seismic_air_time_delay_history = [seismic_air_time_delay_history seismic_air_time_delay];
+            // Time delay first through ground then air 
+            double seismicTimeDelay = 0.91 * pow(d, (1.03)) * pow(Q, (-0.02)) / Cs;  
+            double seismicToAirTimeDelay = h / avgAirSpeed;
+            double seismicAirTimeDelay = seismicTimeDelay + seismicToAirTimeDelay;
         
             // IF SEISMIC_BOOM ADD SEISMIC_BOOM AUDIO
             AudioFile<float> seismicAudio = bomb_audio_;
-            std::vector<float> sampleData = seismicAudio.samples[0];
-//            // seismicAudio.samples is float vector
-//            // padding zeros to this vector
             
-            float sampleRateSeismic = seismicAudio.getSampleRate();
-            size_t numZerosSeismic = sampleRateSeismic * seismic_air_time_delay;
-            seismicAudio.samples[0].insert(seismicAudio.samples[0].begin(), numZerosSeismic, 0.0f);
-                  
-            PublishAudioMessage(seismicAudio);
+            // TODO: low-pass filtering the seismic audio
+            
+            // COMPUTE TIME INDEX IN BACKGROUND
+            size_t seismicDelayIdx = sampleRate * seismicAirTimeDelay;
+//            std::cout << "seismicAirTimeDelay = " << seismicAirTimeDelay << std::endl;
+            if (seismicDelayIdx < background_audio_.samples[0].size() && 
+                    (seismicAudio.samples[0].size() < background_audio_.samples[0].size())) {
+                for (size_t i = 0; i < seismicAudio.samples[0].size(); ++i) 
+                    background_audio_.samples[0][i+seismicDelayIdx] += seismicAudio.samples[0][i];
+            } else {
+                std::cout << "Seismic signal starting index is out of range." << std::endl;
+            }
+            
+//          PublishAudioMessage(seismicAudio);
 //    
-//            // IF AIR_BOOM ADD AIR_BOOM AUDIO
+//          // IF AIR_BOOM ADD AIR_BOOM AUDIO
             AudioFile<float> airBoomAudio = bomb_audio_;
-//            std::vector<float> sampleData = airBoomAudio.samples[0];
-
-//            // padding zeros to airBoomAudio.samples vector
-            float sampleRateAir = airBoomAudio.getSampleRate();
-            size_t numZerosAir = sampleRateAir * air_time_delay;
-            airBoomAudio.samples[0].insert(airBoomAudio.samples[0].begin(), numZerosAir, 0.0f);
+            // COMPUTE TIME INDEX IN BACKGROUND
+            size_t airDelayIdx = sampleRate * airTimeDelay;
+            if (airDelayIdx < background_audio_.samples[0].size() && 
+                    (airBoomAudio.samples[0].size() < background_audio_.samples[0].size())) {
+                for (size_t i = 0; i < airBoomAudio.samples[0].size(); ++i) 
+                    background_audio_.samples[0][i+airDelayIdx] += airBoomAudio.samples[0][i];
+            } else {
+                std::cout << "Air signal starting index is out of range." << std::endl;
+            }
             
-            PublishAudioMessage(airBoomAudio);
+//            PublishAudioMessage(airBoomAudio);
          
             explosion_triggered_ = false; // Reset the trigger after playing the bomb audio.
         }
+        
+        PublishAudioMessage(background_audio_);
+        
     }
     
     /////////////////////////////////////////////////
