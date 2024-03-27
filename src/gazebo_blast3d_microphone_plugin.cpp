@@ -106,7 +106,7 @@ namespace gazebo {
     /////////////////////////////////////////////////
 
     void GazeboBlast3DMicrophonePlugin::OnUpdate(const common::UpdateInfo& _info) {
-
+    
         // Get the current simulation time.
 #if GAZEBO_MAJOR_VERSION >= 9
         common::Time now = world_->SimTime();
@@ -117,31 +117,56 @@ namespace gazebo {
         // ADD NEXT CHUNK OF BACKGROUND AUDIO
         // Play the background audio.
         
-        /** If you hit this assert then the file path above
-         probably doesn't refer to a valid audio file */
-//        assert (loadedOK);
-        
         PublishAudioMessage(background_audio_);
         
-        
+        explosion_triggered_ = true;
         // Check for explosion trigger and play bomb audio if triggered.
         if (explosion_triggered_) {
+            double Q = 5;
+            double C_a = 340;  //air speed
+            double C_s = 6000;  //solid speed
+            double h = 10;   //drone height
+            double d = 10;   //distance from the blast
+
+            //Time delay through air propagation
+            double air_dist = sqrt(pow(d, 2) + pow(h, 2));
+            double air_time_delay = 0.34 * pow(air_dist, (1.4)) * pow(Q, (-0.2)) / C_a;  //0.56 * d ^ 1.4 * Q ^ (-0.2) / 340
+    //        double air_time_delay_history = [air_time_delay_history air_time_delay];
+            double avg_air_speed = air_dist / air_time_delay;
+
+            // Time delay through ground propagation
+            double seismic_time_delay = 0.91 * pow(d, (1.03)) * pow(Q, (-0.02)) / C_s;  //0.52 * d ^ 1.26 / (C_s * Q^0.01);
+    //        double seismic_time_delay_history = [seismic_time_delay_history seismic_time_delay];
+            double seismic_to_air_time_delay = h / avg_air_speed;
+            double seismic_air_time_delay = seismic_time_delay + seismic_to_air_time_delay;
+    //        double seismic_air_time_delay_history = [seismic_air_time_delay_history seismic_air_time_delay];
+        
             // IF SEISMIC_BOOM ADD SEISMIC_BOOM AUDIO
-//            AudioFile<float> seismicAudio = bomb_audio_;
+            AudioFile<float> seismicAudio = bomb_audio_;
+            std::vector<float> sampleData = seismicAudio.samples[0];
 //            // seismicAudio.samples is float vector
 //            // padding zeros to this vector
-//            PublishAudioMessage(seismicAudio);
+            
+            float sampleRateSeismic = seismicAudio.getSampleRate();
+            size_t numZerosSeismic = sampleRateSeismic * seismic_air_time_delay;
+            seismicAudio.samples[0].insert(seismicAudio.samples[0].begin(), numZerosSeismic, 0.0f);
+                  
+            PublishAudioMessage(seismicAudio);
 //    
 //            // IF AIR_BOOM ADD AIR_BOOM AUDIO
-//            AudioFile<float> airBoomAudio = bomb_audio_;
-//            // seismicAudio.samples is float vector
-//            // padding zeros to this vector
-//            PublishAudioMessage(airBoomAudio);
+            AudioFile<float> airBoomAudio = bomb_audio_;
+//            std::vector<float> sampleData = airBoomAudio.samples[0];
+
+//            // padding zeros to airBoomAudio.samples vector
+            float sampleRateAir = airBoomAudio.getSampleRate();
+            size_t numZerosAir = sampleRateAir * air_time_delay;
+            airBoomAudio.samples[0].insert(airBoomAudio.samples[0].begin(), numZerosAir, 0.0f);
+            
+            PublishAudioMessage(airBoomAudio);
          
             explosion_triggered_ = false; // Reset the trigger after playing the bomb audio.
         }
     }
-//}
     
     /////////////////////////////////////////////////
 
@@ -160,13 +185,13 @@ namespace gazebo {
 
     /////////////////////////////////////////////////
     
-    void GazeboBlast3DMicrophonePlugin::PublishAudioMessage(AudioFile<float> background_audio_) {
+    void GazeboBlast3DMicrophonePlugin::PublishAudioMessage(AudioFile<float> audio) {
         
         
-        int bitDepth = background_audio_.getBitDepth();
-        float sampleRate = background_audio_.getSampleRate();
-        std::vector<float> sampleData = background_audio_.samples[0]; // in the channel 0
-        int numChannels = background_audio_.getNumChannels();    
+        int bitDepth = audio.getBitDepth();
+        float sampleRate = audio.getSampleRate();
+        std::vector<float> sampleData = audio.samples[0]; // in the channel 0
+        int numChannels = audio.getNumChannels();    
         size_t numBytes = sampleData.size() * sizeof(float);
         
 #if GAZEBO_MAJOR_VERSION >= 9
@@ -196,12 +221,12 @@ namespace gazebo {
 //        {
 //            for (int channel = 0; channel < a.getNumChannels(); channel++)
 //            {
-//                a.samples[channel][i] = background_audio_.samples[channel][i] * 2;
+//                a.samples[channel][i] = audio.samples[channel][i];
 //            }
 //        }
 //        
-//        std::string filePath = blast3d_audio_datafolder_ + "newaudioFile.wav"; // change this to somewhere useful for you
-//        a.save ("newaudioFile.wav", AudioFileFormat::Wave);
+//        std::string filePath = blast3d_audio_datafolder_ + "audioFile.wav"; // change this to somewhere useful for you
+//        a.save ("audioFile.wav", AudioFileFormat::Wave);
     }
 }
 /* vim: set et fenc=utf-8 ff=unix sts=0 sw=2 ts=2 : */
