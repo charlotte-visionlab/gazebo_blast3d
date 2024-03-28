@@ -130,6 +130,11 @@ void GazeboBlast3DCameraPlugin::Load(sensors::SensorPtr _sensor, sdf::ElementPtr
         imuSub_ = node_handle_->Subscribe(topicName, &GazeboBlast3DCameraPlugin::ImuCallback, this);
     }
 
+    if (_sdf->HasElement("eventThreshold"))
+        this->event_threshold = _sdf->GetElement("eventThreshold")->Get<float>();
+    else
+        gzwarn << "[gazebo_blast3d_camera_plugin] Please specify a DVS event threshold." << endl;
+
     getSdfParam<std::string>(_sdf, "blast3dImageTopic", blast3d_image_topic_,
             blast3d_image_topic_);
     getSdfParam<std::string>(_sdf, "blast3dEventTopic", blast3d_event_topic_,
@@ -156,7 +161,7 @@ void GazeboBlast3DCameraPlugin::Load(sensors::SensorPtr _sensor, sdf::ElementPtr
         eventCamera_pub_ = node_handle_->Advertise<sensor_msgs::msgs::EventArray>(topicName, 10);
         this->newFrameConnection = this->camera->ConnectNewImageFrame(
                 boost::bind(&GazeboBlast3DCameraPlugin::OnNewFrameEventCamera,
-                this, _1, this->width, this->height, this->depth, this->format, blast3d_video_datafolder_));
+                this, _1, this->width, this->height, this->depth, this->format));
     }
 
     string sensorName = "";
@@ -170,11 +175,6 @@ void GazeboBlast3DCameraPlugin::Load(sensors::SensorPtr _sensor, sdf::ElementPtr
     //      topicName = _sdf->GetElement("eventsTopicName")->Get<std::string>();
 
     const string topic = sensorName + topicName;
-
-    if (_sdf->HasElement("eventThreshold"))
-        this->event_threshold = _sdf->GetElement("eventThreshold")->Get<float>();
-    else
-        gzwarn << "[gazebo_blast3d_camera_plugin] Please specify a DVS threshold." << endl;
 
     //    event_pub_ = node_handle_.advertise<sensor_msgs::msgs::EventArray>(topic, 10, 10.0);
 
@@ -251,8 +251,7 @@ void GazeboBlast3DCameraPlugin::OnNewFrameEventCamera(const unsigned char * _ima
         unsigned int _width,
         unsigned int _height,
         unsigned int _depth,
-        const std::string &_format,
-        const std::string &blast3d_video_datafolder_) {
+        const std::string &_format) {
 
     //get data depending on gazebo version
 #if GAZEBO_MAJOR_VERSION >= 7
@@ -388,7 +387,7 @@ void GazeboBlast3DCameraPlugin::processDelta(cv::Mat *last_image, cv::Mat *curr_
             // update the pos_mask and neg_mask with blast
             cv::bitwise_or(pos_mask, blast_pos_mask, pos_mask);
             cv::bitwise_or(neg_mask, blast_neg_mask, neg_mask);
-            
+            // SUGGEST A REPLACEMENT OF THE PIXEL VALUE / INTENSITY
         }
         
         this->fillEvents(&pos_mask, 0, events);

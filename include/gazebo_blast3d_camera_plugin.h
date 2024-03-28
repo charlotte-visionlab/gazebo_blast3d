@@ -152,8 +152,7 @@ namespace gazebo
                               unsigned int _depth, const std::string &_format);
       virtual void OnNewFrameEventCamera(const unsigned char *_image,
                               unsigned int _width, unsigned int _height,
-                              unsigned int _depth, const std::string &_format,
-                              const std::string &blast3d_video_datafolder_);
+                              unsigned int _depth, const std::string &_format);
       virtual void ImuCallback(ConstIMUPtr& _imu);
       virtual void processDelta(cv::Mat *last_image, cv::Mat *curr_image, cv::Mat *last_blast_image, 
                                 cv::Mat *curr_blast_image, std::vector<sensor_msgs::msgs::Event> *events,
