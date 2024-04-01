@@ -41,6 +41,15 @@ namespace gazebo {
         getSdfParam<double>(sdf, "publishRate", pub_rate, pub_rate);
         pub_interval_ = (pub_rate > 0.0) ? 1 / pub_rate : 0.0;
 
+        //CreatePubsAndSubs();
+        //pubs_and_subs_created_ = true;
+
+        // Create subscriber to receive blast client requests
+        blast3d_register_sub_ = node_handle_->Subscribe<blast3d_msgs::msgs::Blast3dServerRegistration>(blast3d_server_reglink_topic_,
+                &GazeboBlast3DWorldPlugin::RegisterLinkCallback, this);
+        gzdbg << __FUNCTION__ << "() world plugin serving plugin notification requests published to topic " << 
+                blast3d_server_reglink_topic_ << "." << std::endl;
+        
         // Listen to the update event. This event is broadcast every
         // simulation iteration.
         update_connection_ = event::Events::ConnectWorldUpdateBegin(boost::bind(&GazeboBlast3DWorldPlugin::OnUpdate, this, _1));
@@ -53,7 +62,6 @@ namespace gazebo {
     }
 
     void GazeboBlast3DWorldPlugin::RegisterLinkCallback(Blast3dServerRegistrationPtr msg) {
-        //gzdbg << __FUNCTION__ << "() called." << std::endl;
         const std::string& model_name = msg->model_name();
         const std::string& link_name = msg->link_name();
         const std::string& namespace_val = msg->namespace_();
@@ -93,10 +101,10 @@ namespace gazebo {
 #else
         common::Time now = world_->GetSimTime();
 #endif
-        if (!pubs_and_subs_created_) {
-            CreatePubsAndSubs();
-            pubs_and_subs_created_ = true;
-        }
+//        if (!pubs_and_subs_created_) {
+//            CreatePubsAndSubs();
+//            pubs_and_subs_created_ = true;
+//        }
 
         if ((now - last_time_).Double() < pub_interval_ || pub_interval_ == 0.0) {
             return;
@@ -117,7 +125,7 @@ namespace gazebo {
         float x = distr(generator);
         float y = distr(generator);
         float z = distr(generator);
-        gzdbg << "PUBLISH BLAST NOW @ (X,Y,Z)=(" <<
+        gzdbg << "PUBLISHED BLAST @ (X,Y,Z)=(" <<
                 x << ", " << y << ", " << z << ")" <<
                 " futureTime=" << futureTime <<
                 " weight_TNT_kg=" << weight_TNT_kg << std::endl;
@@ -132,12 +140,12 @@ namespace gazebo {
         }
     }
 
-    void GazeboBlast3DWorldPlugin::CreatePubsAndSubs() {
-        // Create subscriber to receive blast client requests
-        blast3d_register_sub_ = node_handle_->Subscribe<blast3d_msgs::msgs::Blast3dServerRegistration>(blast3d_server_reglink_topic_,
-                &GazeboBlast3DWorldPlugin::RegisterLinkCallback, this);
-
-    }
+//    void GazeboBlast3DWorldPlugin::CreatePubsAndSubs() {
+//        // Create subscriber to receive blast client requests
+//        blast3d_register_sub_ = node_handle_->Subscribe<blast3d_msgs::msgs::Blast3dServerRegistration>(blast3d_server_reglink_topic_,
+//                &GazeboBlast3DWorldPlugin::RegisterLinkCallback, this);
+//
+//    }
 
     GZ_REGISTER_WORLD_PLUGIN(GazeboBlast3DWorldPlugin);
 }

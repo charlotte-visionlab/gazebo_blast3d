@@ -15,7 +15,7 @@
     </include>
     <plugin name='blast3d_plugin' filename='libgazebo_blast3d_world_plugin.so'>
       <publishRate>0.5</publishRate>
-      <blast3dServerRegisterLinkTopic>/gazebo/default/world_blast3d_register_link</blast3dServerRegisterLinkTopic>
+      <blast3dServerRegisterLinkTopic>/gazebo/default/blast3d_register_link</blast3dServerRegisterLinkTopic>
       <useCustomBlastData>false</useCustomBlastData>
       <customBlastDataFile></customBlastDataFile>
     </plugin>

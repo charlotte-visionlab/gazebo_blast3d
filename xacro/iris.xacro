@@ -195,13 +195,13 @@ gazebo_blast3d/xacro$ gz sdf -p iris.urdf > iris.sdf
         <outputRate>20</outputRate>
         <always_on>1</always_on>
         <plugin name="event_camera_plugin" filename="libgazebo_blast3d_camera_plugin.so">
-            <!--
             <blast3dVideoDataFolder>/home2/arwillis/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/video</blast3dVideoDataFolder>
-            -->
             <cameraName>event_cam</cameraName>
             <frameName>/event_camera_link</frameName>
             <eventThreshold>1</eventThreshold>
+            <!--
             <blast3dVideoDataFolder>/home.md2/sparab2/wind/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/video</blast3dVideoDataFolder>
+            -->
             <blast3dImageTopic>event_image</blast3dImageTopic>
             <blast3dEventTopic>event_stream</blast3dEventTopic>       
         </plugin>
@@ -337,22 +337,25 @@ gazebo_blast3d/xacro$ gz sdf -p iris.urdf > iris.sdf
       <windServerLinkTopic>/gazebo/default/dynamics_wind</windServerLinkTopic>
     </plugin>
     -->
+    <!--
     <plugin name="microphone_1_plugin" filename="libgazebo_blast3d_microphone_plugin.so">
       <robotNamespace></robotNamespace>
       <frameId>world</frameId>
       <linkName>/base_link</linkName>
       <audioLinkTopic>audio</audioLinkTopic>
-      <!-- <customAudioDataFolder>/home2/arwillis/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/audio</customAudioDataFolder>
--->
-      <customAudioDataFolder>/home.md2/sparab2/wind/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/audio</customAudioDataFolder>
+        <customAudioDataFolder>/home2/arwillis/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/audio</customAudioDataFolder>
     </plugin>
+    -->
+        <!-- 
+        <customAudioDataFolder>/home.md2/sparab2/wind/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/audio</customAudioDataFolder>
+        -->
     <plugin name='gazebo_blast3d_model_plugin' filename='libgazebo_blast3d_model_plugin.so'>
       <robotNamespace></robotNamespace>
       <frameId>world</frameId>
       <linkName>/base_link</linkName>
       <blast3dPressureDataFolder>/home2/arwillis/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/pressure</blast3dPressureDataFolder>
       <blast3dServerRegisterLinkTopic>/gazebo/default/blast3d_register_link</blast3dServerRegisterLinkTopic>
-      <blast3dServerLinkTopic>/gazebo/default/blast3d</blast3dServerLinkTopic>
+      <blast3dServerLinkTopic>/gazebo/default/blast3d/base_link</blast3dServerLinkTopic>
     </plugin>
 
     <plugin name='magnetometer_plugin' filename='libgazebo_magnetometer_plugin.so'>

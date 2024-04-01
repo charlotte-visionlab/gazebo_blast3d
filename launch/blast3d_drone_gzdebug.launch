@@ -21,6 +21,9 @@
         export GAZEBO_PLUGIN_PATH=/home2/arwillis/uncc_wind_control/ros_image/ros_ws/devel/lib:${GAZEBO_PLUGIN_PATH}
         export GAZEBO_MODEL_PATH=/home2/arwillis/uncc_wind_control/third_party/PX4-Autopilot/Tools/simulation/gazebo-classic/sitl_gazebo-classic/models/:/home2/arwillis/uncc_wind_control/ros_image/ros_ws/src/px4_gazebo_wind3d/models:$GAZEBO_MODEL_PATH
         export LD_LIBRARY_PATH=/home2/arwillis/uncc_wind_control/ros_image/ros_ws/devel/lib:${LD_LIBRARY_PATH}
+        export PX4_HOME_LAT=35.3105038
+        export PX4_HOME_LON=-80.7401052
+        export PX4_HOME_ALT=0
     -->
     <!--
         From the ROS workspace folder run the following two commmands:
@@ -119,9 +122,12 @@
       <!--<remap from="joint_states" to="different_joint_states" />-->
     </node>
 
+    <arg name="mission_A" default="MC_mission_box.plan"/>
+    <arg name="mission_B" default="MC_mission_uncc.plan"/>
+    <arg name="mission_C" default="MC_safe_landing.plan"/>
     <!-- <node pkg="gazebo_px4_drone" name="mavros_autopilot" type="mavros_autopilot_01.py" output="screen"/> -->
     <node pkg="gazebo_px4_drone" name="mission_test" type="mission_test.py" output="screen" if="$(arg run_mission)">
-        <param name="mission_name"        value="MC_mission_box.plan"/>
+        <param name="mission_name"        value="$(arg mission_B)"/>
     </node>
 
     <!-- MAVROS -->

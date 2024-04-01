@@ -29,13 +29,13 @@
 
 #include "Blast3d.pb.h"
 #include "Blast3dServerRegistration.pb.h"
-//#include "ConnectGazeboToRosTopic.pb.h"
 
 #include "utils/common.h"
 
 namespace gazebo {
 
     // Constants
+    static const bool kPrintOnMsgCallback = false;
     static const bool kPrintOnPluginLoad = true;
     static const bool kPrintOnUpdates = false;
     static const std::string kDefaultNamespace = "";
@@ -43,9 +43,6 @@ namespace gazebo {
     static const std::string kDefaultBlast3dServerRegisterTopic_model = "/gazebo/default/blast3d_register_link";
     static const std::string kDefaultBlast3dTopic = "blast3d";
     static const std::string kDefaultLinkName = "base_link";
-
-    static const std::string kConnectGazeboToRosSubtopic = "connect_gazebo_to_ros_subtopic";
-    static const std::string kConnectRosToGazeboSubtopic = "connect_ros_to_gazebo_subtopic";
 
     typedef const boost::shared_ptr<const blast3d_msgs::msgs::Blast3d>& Blast3dMsgPtr;
 
@@ -123,10 +120,9 @@ namespace gazebo {
 
         /// \brief    Pointer to the update event connection.
         event::ConnectionPtr updateConnection_;
-        
-        /// \brief    Variables for custom wind field generation.
-        bool use_custom_blastdata_;
 
+        std::vector<blast3d_msgs::msgs::Blast3d> blastMsgQueue;
+        
         /// \brief  Reads blast data from a text file and saves it.
         /// \param[in] custom_blast3d_field_path Path to the wind field from ~/.ros.
         void ReadBlast3DData(std::string &custom_blastdata_path);

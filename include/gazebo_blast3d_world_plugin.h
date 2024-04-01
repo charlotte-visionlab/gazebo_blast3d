@@ -71,13 +71,13 @@ namespace gazebo {
     private:
         /// \brief    Flag that is set to true once CreatePubsAndSubs() is called, used
         ///           to prevent CreatePubsAndSubs() from be called on every OnUpdate().
-        bool pubs_and_subs_created_;
+//        bool pubs_and_subs_created_;
 
         /// \brief    Creates all required publishers and subscribers, incl. routing of messages to/from ROS if required.
         /// \details  Call this once the first time OnUpdate() is called (can't
         ///           be called from Load() because there is no guarantee GazeboRosInterfacePlugin has
         ///           has loaded and listening to ConnectGazeboToRosTopic and ConnectRosToGazeboTopic messages).
-        void CreatePubsAndSubs();
+//        void CreatePubsAndSubs();
 
         void RegisterLinkCallback(Blast3dServerRegistrationPtr msg);
 
@@ -92,16 +92,15 @@ namespace gazebo {
         double pub_interval_;
 
         transport::NodePtr node_handle_;
-        transport::PublisherPtr blast_pub_;
 
         gazebo::transport::SubscriberPtr blast3d_register_sub_;
+        std::vector<transport::PublisherPtr> registered_link_blast3d_publisher_list_;
 
         std::vector<std::string> registered_link_name_list_;
         std::vector<physics::LinkPtr> registered_link_list_;
         std::vector<physics::ModelPtr> registered_model_list_;
         std::vector<std::string> registered_namespace_list_;
         std::vector<std::string> registered_client_blast3d_topic_list_;
-        std::vector<transport::PublisherPtr> registered_link_blast3d_publisher_list_;
 
         blast3d_msgs::msgs::Blast3d blast3d_message_;
     };
