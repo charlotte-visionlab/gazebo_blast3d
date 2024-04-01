@@ -52,6 +52,7 @@ namespace gazebo {
         GazeboBlast3DWorldPlugin()
         : WorldPlugin(),
         blast3d_server_reglink_topic_(kDefaultBlast3dServerRegisterTopic),
+        pub_interval_(0.5),                
         node_handle_(NULL) {
         }
 
@@ -88,6 +89,7 @@ namespace gazebo {
         std::string blast3d_server_reglink_topic_;
 
         common::Time last_time_;
+        double pub_interval_;
 
         transport::NodePtr node_handle_;
         transport::PublisherPtr blast_pub_;
@@ -101,6 +103,7 @@ namespace gazebo {
         std::vector<std::string> registered_client_blast3d_topic_list_;
         std::vector<transport::PublisherPtr> registered_link_blast3d_publisher_list_;
 
+        blast3d_msgs::msgs::Blast3d blast3d_message_;
     };
 }
 

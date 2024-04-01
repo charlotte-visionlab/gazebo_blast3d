@@ -13,6 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <limits>
+#include <random>
+#include <stdint.h>
 
 #include "gazebo_blast3d_world_plugin.h"
 
@@ -32,6 +35,11 @@ namespace gazebo {
         node_handle_->Init();
 
         getSdfParam<std::string>(sdf, "blast3dServerRegisterLinkTopic", blast3d_server_reglink_topic_, blast3d_server_reglink_topic_);
+
+        // Wind topic publishing rates
+        double pub_rate = 2.0;
+        getSdfParam<double>(sdf, "publishRate", pub_rate, pub_rate);
+        pub_interval_ = (pub_rate > 0.0) ? 1 / pub_rate : 0.0;
 
         // Listen to the update event. This event is broadcast every
         // simulation iteration.
@@ -75,8 +83,9 @@ namespace gazebo {
                     "does not have link " << link_name << "." << std::endl;
         }
     }
-    
+
     // This gets called by the world update start event.
+
     void GazeboBlast3DWorldPlugin::OnUpdate(const common::UpdateInfo &_info) {
         // Get the current simulation time.
 #if GAZEBO_MAJOR_VERSION >= 9
@@ -89,14 +98,45 @@ namespace gazebo {
             pubs_and_subs_created_ = true;
         }
 
+        if ((now - last_time_).Double() < pub_interval_ || pub_interval_ == 0.0) {
+            return;
+        }
         last_time_ = now;
+        std::random_device rand_dev;
+        std::mt19937 generator(rand_dev());
+        std::uniform_real_distribution<double> distrZ1(0.0, 1.0);
+        float blast_occurs = distrZ1(generator);
+        float blastLikelihood = 0.15;
+        if (blast_occurs > blastLikelihood)
+            return;
+        std::uniform_real_distribution<double> distrFF(5.0, 15.0);
+        float weight_TNT_kg = distrFF(generator);
+        std::uniform_real_distribution<double> distrTime(1.0, 3.0);
+        double futureTime = distrTime(generator);
+        std::uniform_real_distribution<double> distr(-20.0, 20.0);
+        float x = distr(generator);
+        float y = distr(generator);
+        float z = distr(generator);
+        gzdbg << "PUBLISH BLAST NOW @ (X,Y,Z)=(" <<
+                x << ", " << y << ", " << z << ")" <<
+                " futureTime=" << futureTime <<
+                " weight_TNT_kg=" << weight_TNT_kg << std::endl;
+        double blastTime = futureTime + now.Double();
+        blast3d_message_.set_x(x);
+        blast3d_message_.set_y(y);
+        blast3d_message_.set_z(z);
+        blast3d_message_.set_weight_tnt_kg(weight_TNT_kg);
+        blast3d_message_.set_time(blastTime);
+        for (int index = 0; index < registered_link_blast3d_publisher_list_.size(); index++) {
+            registered_link_blast3d_publisher_list_[index++]->Publish(blast3d_message_);
+        }
     }
 
     void GazeboBlast3DWorldPlugin::CreatePubsAndSubs() {
         // Create subscriber to receive blast client requests
         blast3d_register_sub_ = node_handle_->Subscribe<blast3d_msgs::msgs::Blast3dServerRegistration>(blast3d_server_reglink_topic_,
                 &GazeboBlast3DWorldPlugin::RegisterLinkCallback, this);
-        
+
     }
 
     GZ_REGISTER_WORLD_PLUGIN(GazeboBlast3DWorldPlugin);

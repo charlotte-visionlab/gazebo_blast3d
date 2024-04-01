@@ -2,8 +2,8 @@
 <launch>
     <!-- SET THIS VARIABLE TO YOUR ROOT FOLDER -->
     <!-- <arg name="PROJECT_IMAGE_ROOT"                    default="/home.md1/server/DEFENSEWERX/jzhang72/asr_project"/> -->
-    <!-- <arg name="PROJECT_IMAGE_ROOT"                default="/home2/arwillis/uncc_wind_control"/> -->
-    <arg name="PROJECT_IMAGE_ROOT"                default="/home.md2/sparab2/wind/uncc_wind_control"/>
+    <arg name="PROJECT_IMAGE_ROOT"                default="/home2/arwillis/uncc_wind_control"/>
+    <!-- <arg name="PROJECT_IMAGE_ROOT"                default="/home.md2/sparab2/wind/uncc_wind_control"/> -->
     
     <arg name="run_qgroundcontrol"                default="true"/>
     <arg name="run_rviz"                          default="true"/>
