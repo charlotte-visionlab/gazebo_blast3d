@@ -147,6 +147,7 @@ namespace gazebo
       GazeboBlast3DCameraPlugin();
       virtual ~GazeboBlast3DCameraPlugin();
       virtual void Load(sensors::SensorPtr _sensor, sdf::ElementPtr _sdf);
+      virtual void OnNewFrameRGBCamera(const unsigned char * _image);
       virtual void OnNewFrameOpticalFlow(const unsigned char *_image,
                               unsigned int _width, unsigned int _height,
                               unsigned int _depth, const std::string &_format);
@@ -154,10 +155,11 @@ namespace gazebo
                               unsigned int _width, unsigned int _height,
                               unsigned int _depth, const std::string &_format);
       virtual void ImuCallback(ConstIMUPtr& _imu);
-      virtual void processDelta(cv::Mat *last_image, cv::Mat *curr_image, cv::Mat *last_blast_image, 
-                                cv::Mat *curr_blast_image, std::vector<sensor_msgs::msgs::Event> *events,
+      virtual void processDelta(cv::Mat &last_image, cv::Mat &curr_image, cv::Mat &last_blast_image, 
+                                cv::Mat &curr_blast_image, cv::Mat &curr_blast_alaph, 
+                                std::vector<sensor_msgs::msgs::Event> &events,
                                 bool explosion=false);
-      virtual void fillEvents(cv::Mat *diff, int polarity, vector<sensor_msgs::msgs::Event> *events);
+      virtual void fillEvents(cv::Mat &diff, int polarity, vector<sensor_msgs::msgs::Event> &events);
 
     protected:
       unsigned int width, height, depth;
@@ -176,8 +178,10 @@ namespace gazebo
       float event_threshold;
       transport::PublisherPtr opticalFlow_pub_;
       transport::PublisherPtr eventCamera_pub_;
+      transport::PublisherPtr rgbCamera_pub_;
       transport::NodePtr node_handle_;
       transport::SubscriberPtr imuSub_;
+      gazebo::msgs::Image rgbCamera_message;
       sensor_msgs::msgs::Event eventCameraEvent_message;
       sensor_msgs::msgs::EventArray eventCameraEventArray_message;
       sensor_msgs::msgs::OpticalFlow opticalFlow_message;
@@ -185,9 +189,13 @@ namespace gazebo
       std::string namespace_;
       std::string gyro_sub_topic_;
       std::string blast3d_video_datafolder_;
-      std::string blast3d_image_topic_, blast3d_event_topic_;
+      std::string blast3d_rgb_image_topic_, blast3d_event_image_topic_, blast3d_event_topic_;
+      std::string camera_mode_;
       OpticalFlowOpenCV *optical_flow_;
       // OpticalFlowPX4 *optical_flow_;
+      std::vector<cv::Mat> blastRGBImageVec;
+      std::vector<cv::Mat> blastGrayImageVec;
+      std::vector<cv::Mat> blastImageAlphaVec;
 
       float hfov_;
       int dt_us_;

@@ -135,33 +135,67 @@ void GazeboBlast3DCameraPlugin::Load(sensors::SensorPtr _sensor, sdf::ElementPtr
     else
         gzwarn << "[gazebo_blast3d_camera_plugin] Please specify a DVS event threshold." << endl;
 
-    getSdfParam<std::string>(_sdf, "blast3dImageTopic", blast3d_image_topic_,
-            blast3d_image_topic_);
+    getSdfParam<std::string>(_sdf, "blast3dRGBImageTopic", blast3d_rgb_image_topic_,
+            blast3d_rgb_image_topic_);
+    getSdfParam<std::string>(_sdf, "blast3dEventImageTopic", blast3d_event_image_topic_,
+            blast3d_event_image_topic_);
     getSdfParam<std::string>(_sdf, "blast3dEventTopic", blast3d_event_topic_,
             blast3d_event_topic_);
     getSdfParam<std::string>(_sdf, "blast3dVideoDataFolder", blast3d_video_datafolder_,
             blast3d_video_datafolder_);
+    getSdfParam<std::string>(_sdf, "cameraMode", camera_mode_,
+            camera_mode_);
+    
+    // Load blast images
+    cv::String folder(blast3d_video_datafolder_);
+    cv::String pattern = folder + "/*.png";
+    std::vector<cv::String> fn;
+    cv::glob(pattern, fn, true);    // recursive glob
+    std::sort(fn.begin(), fn.end());    // sort file paths alphabetically
+    
+    for (const auto& file : fn) {
+        cv::Mat image = cv::imread(file, cv::IMREAD_UNCHANGED);
+        assert(image.channels() == 4 &&  && "[gazebo_blast_camera_plugin] Blast images have to be RGBA with an alpha channel for image overlay to work.\n");
+        if (!image.empty()) {
+            cv::Mat bgrImage;
+            cv::cvtColor(image, bgrImage, cv::COLOR_BGRA2BGR);
+            blastRGBImageVec.push_back(bgrImage);
+            cv::Mat grayImage;
+            cv::cvtColor(image, grayImage, cv::COLOR_BGR2GRAY);
+            blastGrayImageVec.push_back(grayImage);
+            // Extract the alpha channel from the base image for blending
+            std::vector<cv::Mat> channels;
+            cv::split(image, channels);
+            cv::Mat alpha = channels[3];
+            blastImageAlphaVec.push_back(alpha);
+        } else {
+            std::cerr << "Could not read image: " << file << std::endl;
+        }
+    }
 
-    string topicName;
-
-    if (false) {
-        topicName = "~/" + scopedName + "/opticalFlow";
+    if (camera_mode_ == "optical") {
+        std::string topicName = "~/" + scopedName + "/opticalFlow";
         boost::replace_all(topicName, "::", "/");
         opticalFlow_pub_ = node_handle_->Advertise<sensor_msgs::msgs::OpticalFlow>(topicName, 10);
         this->newFrameConnection = this->camera->ConnectNewImageFrame(
                 boost::bind(&GazeboBlast3DCameraPlugin::OnNewFrameOpticalFlow,
                 this, _1, this->width, this->height, this->depth, this->format));
-    } else {
-        topicName = blast3d_image_topic_;
-        boost::replace_all(topicName, "::", "/");
+    } 
+    else if (camera_mode_ == "event") {
 //        eventCamera_pub_ = node_handle_->Advertise<sensor_msgs::msgs::Event>(topicName, 10);
 //        this->newFrameConnection = this->camera->ConnectNewImageFrame(
 //                boost::bind(&GazeboBlast3DCameraPlugin::OnNewFrameEventCamera,
 //                this, _1, this->width, this->height, this->depth, this->format));
-        eventCamera_pub_ = node_handle_->Advertise<sensor_msgs::msgs::EventArray>(topicName, 10);
+        eventCamera_pub_ = node_handle_->Advertise<sensor_msgs::msgs::EventArray>(blast3d_event_image_topic_, 10);
         this->newFrameConnection = this->camera->ConnectNewImageFrame(
                 boost::bind(&GazeboBlast3DCameraPlugin::OnNewFrameEventCamera,
                 this, _1, this->width, this->height, this->depth, this->format));
+    }
+    else if (camera_mode_ == "RGB") {
+        rgbCamera_pub_ = node_handle_->Advertise<gazebo::msgs::Image>(blast3d_rgb_image_topic_, 1);
+        this->newFrameConnection = this->camera->ConnectNewImageFrame(
+                boost::bind(&GazeboBlast3DCameraPlugin::OnNewFrameRGBCamera,
+                this, _1));
     }
 
     string sensorName = "";
@@ -169,15 +203,6 @@ void GazeboBlast3DCameraPlugin::Load(sensors::SensorPtr _sensor, sdf::ElementPtr
         sensorName = _sdf->GetElement("cameraName")->Get<std::string>() + "/";
     else
         gzwarn << "[gazebo_blast3d_camera_plugin] Please specify a cameraName." << endl;
-
-    //    string topicName = "events";
-    //    if (_sdf->HasElement("eventsTopicName"))
-    //      topicName = _sdf->GetElement("eventsTopicName")->Get<std::string>();
-
-    const string topic = sensorName + topicName;
-
-    //    event_pub_ = node_handle_.advertise<sensor_msgs::msgs::EventArray>(topic, 10, 10.0);
-
 
     this->parentSensor->SetActive(true);
 
@@ -247,6 +272,99 @@ void GazeboBlast3DCameraPlugin::OnNewFrameOpticalFlow(const unsigned char * _ima
 
 /////////////////////////////////////////////////
 
+void GazeboBlast3DCameraPlugin::OnNewFrameRGBCamera(const unsigned char * _image) {
+
+    //get data depending on gazebo version
+#if GAZEBO_MAJOR_VERSION >= 7
+    _image = this->camera->ImageData(0);
+    double frame_time = this->camera->LastRenderWallTime().Double();
+#else
+    _image = this->camera->GetImageData(0);
+    double frame_time = this->camera->GetLastRenderWallTime().Double();
+#endif
+
+    frame_time_us_ = (frame_time - first_frame_time_) * 1e6; //since start
+
+    // convert given frame to opencv image
+    cv::Mat input_image(this->height, this->width, CV_8UC3);
+    input_image.data = (uchar*) _image;
+
+    // color to grayscale
+//    cv::Mat curr_image_rgb(_height, _width, CV_8UC3);
+//    cv::cvtColor(input_image, curr_image_rgb, cv::COLOR_RGB2BGR);
+//    cv::cvtColor(curr_image_rgb, input_image, cv::COLOR_BGR2GRAY);
+    cv::Mat curr_image = input_image;
+    cv::Mat curr_blast_image;
+    cv::Mat curr_blast_alpha;
+    
+    assert(_height == height && _width == width);
+    
+    // when there is no explosion, the output image is the scene image
+    cv::Mat blend_image = curr_image;
+    bool explosion = true;
+    if (this->has_last_image) {
+        if (explosion) {
+            if (this->has_last_blast_image && blastGrayImageVec.size() > 1) {
+                curr_blast_image = blastRGBImageVec[this->last_blast_image_idx + 1];
+                curr_blast_alpha = blastImageAlphaVec[this->last_blast_image_idx + 1];
+                if (curr_blast_image.size() != blend_image.size()) {
+                    cv::resize(curr_blast_image, curr_blast_image, blend_image.size());
+                    cv::resize(curr_blast_alpha, curr_blast_alpha, blend_image.size());
+                }
+                // overlay blast image onto the scene image
+                curr_blast_image.copyTo(blend_image, curr_blast_alpha);
+                // For debug
+//                std::cout << "alpha value = " << static_cast<int>(zeroMat.at<uchar>(25, 25)) << std::endl;
+//                std::cout << "blend image channel = " << blend_image.channels() << std::endl;
+//                std::cout << "curr_blast_image channel = " << curr_blast_image.channels() << std::endl;
+                this->last_blast_image_idx += 1;
+                this->last_blast_image = curr_blast_image;
+                // reset when it exceeds the file range (currently having 61 images)
+                if (this->last_blast_image_idx >= (blastRGBImageVec.size() - 1)) {
+                    this->has_last_blast_image = false;
+                }
+            } else {
+                this->last_blast_image_idx = 0;
+                this->last_blast_image = blastRGBImageVec[this->last_blast_image_idx];
+                if (this->last_blast_image.size() != this->last_image.size()) {
+                    cv::resize(this->last_blast_image, this->last_blast_image, this->last_image.size());
+                }
+                this->has_last_blast_image = true;
+            } 
+        }
+    } else if (curr_image.size().area() > 0) {
+        this->last_image = curr_image;
+        this->has_last_image = true;
+    } else {
+        gzwarn << "Ignoring empty image." << endl;
+    }
+
+    //prepare event message
+    // Get the current simulation time.
+#if GAZEBO_MAJOR_VERSION >= 9
+        common::Time now = world->SimTime();
+#else
+        common::Time now = world->GetSimTime();
+#endif
+        
+    rgbCamera_message.set_width(this->width);
+    rgbCamera_message.set_height(this->height);
+    rgbCamera_message.set_pixel_format(2);  // RGB8: 2; Grayscale: 1
+    rgbCamera_message.set_step(this->width * this->height * this->depth);
+    // Convert OpenCV Mat to Gazebo message data
+    const uchar* data = blend_image.data;
+    size_t dataSize = blend_image.step[0] * blend_image.rows;
+    rgbCamera_message.set_data(data, dataSize);
+
+    rgbCamera_pub_->Publish(rgbCamera_message);
+
+    // For debug
+    cv::imshow("blended RGB image", blend_image);
+    cv::waitKey(30);
+}
+
+/////////////////////////////////////////////////
+
 void GazeboBlast3DCameraPlugin::OnNewFrameEventCamera(const unsigned char * _image,
         unsigned int _width,
         unsigned int _height,
@@ -264,10 +382,6 @@ void GazeboBlast3DCameraPlugin::OnNewFrameEventCamera(const unsigned char * _ima
 
     frame_time_us_ = (frame_time - first_frame_time_) * 1e6; //since start
 
-    //calculate angular flow
-    //  int quality = optical_flow_->calcFlow((uchar*)_image, frame_time_us_, dt_us_, flow_x_ang, flow_y_ang);
-    int quality = 0;
-
     // convert given frame to opencv image
     cv::Mat input_image(_height, _width, CV_8UC3);
     input_image.data = (uchar*) _image;
@@ -276,9 +390,9 @@ void GazeboBlast3DCameraPlugin::OnNewFrameEventCamera(const unsigned char * _ima
     cv::Mat curr_image_rgb(_height, _width, CV_8UC3);
     cv::cvtColor(input_image, curr_image_rgb, cv::COLOR_RGB2BGR);
     cv::cvtColor(curr_image_rgb, input_image, cv::COLOR_BGR2GRAY);
-    //
     cv::Mat curr_image = input_image;
     cv::Mat curr_blast_image;
+    cv::Mat curr_blast_alpha;
 
     assert(_height == height && _width == width);
     std::vector<sensor_msgs::msgs::Event> events;
@@ -286,30 +400,29 @@ void GazeboBlast3DCameraPlugin::OnNewFrameEventCamera(const unsigned char * _ima
     bool explosion = true;
     if (this->has_last_image) {
         if (!explosion) {
-            this->processDelta(&this->last_image, &curr_image, &this->last_blast_image, &curr_blast_image, &events);
+            this->processDelta(this->last_image, curr_image, this->last_blast_image, curr_blast_image, curr_blast_alpha, events);
         }
         else {
-            if (this->has_last_blast_image) {
-                int zero_padding_length = 4 - std::to_string(this->last_blast_image_idx).length();
-                int curr_blast_image_idx = this->last_blast_image_idx + 1;
-                std::string curr_blast_image_name = std::string(zero_padding_length, '0')
-                                                            + std::to_string(curr_blast_image_idx);
-                std::string curr_blast_image_path = blast3d_video_datafolder_ + "/" + curr_blast_image_name + ".png";
-                cv::Mat tmp = cv::imread(curr_blast_image_path, cv::IMREAD_GRAYSCALE);
-                
-                cv::resize(tmp, curr_blast_image, this->last_image.size());
-                this->processDelta(&this->last_image, &curr_image, &this->last_blast_image, &curr_blast_image, &events, explosion);
+            if (this->has_last_blast_image && blastGrayImageVec.size() > 1) {
+                curr_blast_image = blastGrayImageVec[this->last_blast_image_idx + 1];
+                curr_blast_alpha = blastImageAlphaVec[this->last_blast_image_idx + 1];
+                if (curr_blast_image.size() != this->last_image.size()) {
+                    cv::resize(curr_blast_image, curr_blast_image, this->last_image.size());
+                    cv::resize(curr_blast_alpha, curr_blast_alpha, cv::Size(this->last_image.cols, this->last_image.rows));
+                }
+                this->processDelta(this->last_image, curr_image, this->last_blast_image, curr_blast_image, curr_blast_alpha, events, explosion);
                 this->last_blast_image_idx += 1;
                 this->last_blast_image = curr_blast_image;
-                // reset last image when it exceeds the file range (currently having 61 images)
-                if (this->last_blast_image_idx >= 60) {
-                    this->last_blast_image_idx = 10;
+                // reset when it exceeds the file range (currently having 61 images)
+                if (this->last_blast_image_idx >= (blastGrayImageVec.size() - 1)) {
+                    this->has_last_blast_image = false;
                 }
             } else {
-                std::string last_blast_image_filename = "/0010.png";
-                this->last_blast_image_idx = 10;
-                cv::Mat blast_image = cv::imread(blast3d_video_datafolder_ + last_blast_image_filename, cv::IMREAD_GRAYSCALE);
-                cv::resize(blast_image, this->last_blast_image, this->last_image.size());
+                this->last_blast_image_idx = 0;
+                this->last_blast_image = blastGrayImageVec[this->last_blast_image_idx];
+                if (this->last_blast_image.size() != this->last_image.size()) {
+                    cv::resize(this->last_blast_image, this->last_blast_image, this->last_image.size());
+                }
                 this->has_last_blast_image = true;
             } 
         }
@@ -320,40 +433,36 @@ void GazeboBlast3DCameraPlugin::OnNewFrameEventCamera(const unsigned char * _ima
         gzwarn << "Ignoring empty image." << endl;
     }
 
-    if (quality >= 0) { // calcFlow(...) returns -1 if data should not be published yet -> output_rate
-        //prepare optical flow message
-        // Get the current simulation time.
+    // Get the current simulation time.
 #if GAZEBO_MAJOR_VERSION >= 9
         common::Time now = world->SimTime();
 #else
         common::Time now = world->GetSimTime();
 #endif
 
-        for (auto& event_msg : events) {
-            eventCameraEventArray_message.mutable_header()->mutable_stamp()->set_sec(
-                    now.Double());
-            eventCameraEventArray_message.mutable_header()->mutable_stamp()->set_nsec(
-                    now.Double() * 1e9);
-            eventCameraEventArray_message.mutable_header()->set_frame_id("drone");
-            eventCameraEventArray_message.set_width(_width); 
-            eventCameraEventArray_message.set_height(_height);
+    eventCameraEventArray_message.mutable_header()->mutable_stamp()->set_sec(
+                now.Double());
+    eventCameraEventArray_message.mutable_header()->mutable_stamp()->set_nsec(
+                now.Double() * 1e9);
+    eventCameraEventArray_message.mutable_header()->set_frame_id("drone");
+    eventCameraEventArray_message.set_width(_width); 
+    eventCameraEventArray_message.set_height(_height);
+    for (auto& event_msg : events) {
     //        sensor_msgs::msgs::Event* event_msg = new sensor_msgs::msgs::Event();
-            eventCameraEventArray_message.mutable_events()->AddAllocated(new sensor_msgs::msgs::Event(event_msg));
-            //send message
-            eventCamera_pub_->Publish(eventCameraEventArray_message);
-        }
+        eventCameraEventArray_message.mutable_events()->AddAllocated(new sensor_msgs::msgs::Event(event_msg));
     }
+    eventCamera_pub_->Publish(eventCameraEventArray_message);
 }
 
-void GazeboBlast3DCameraPlugin::processDelta(cv::Mat *last_image, cv::Mat *curr_image, 
-        cv::Mat *last_blast_image, cv::Mat *curr_blast_image,
-        std::vector<sensor_msgs::msgs::Event> *events,
+void GazeboBlast3DCameraPlugin::processDelta(cv::Mat &last_image, cv::Mat &curr_image, 
+        cv::Mat &last_blast_image, cv::Mat &curr_blast_image, cv::Mat &curr_blast_alpha,
+        std::vector<sensor_msgs::msgs::Event> &events,
         bool explosion) {
-    if (curr_image->size() == last_image->size()) {
+    if (curr_image.size() == last_image.size()) {
         
         // camera image
-        cv::Mat pos_diff = *curr_image - *last_image;
-        cv::Mat neg_diff = *last_image - *curr_image;
+        cv::Mat pos_diff = curr_image - last_image;
+        cv::Mat neg_diff = last_image - curr_image;
 
         cv::Mat pos_mask;
         cv::Mat neg_mask;
@@ -361,18 +470,13 @@ void GazeboBlast3DCameraPlugin::processDelta(cv::Mat *last_image, cv::Mat *curr_
         cv::threshold(pos_diff, pos_mask, event_threshold, 255, cv::THRESH_BINARY);
         cv::threshold(neg_diff, neg_mask, event_threshold, 255, cv::THRESH_BINARY);
 
-        *last_image += pos_mask & pos_diff;
-        *last_image -= neg_mask & neg_diff;
-        
-        // For Debug
-//        cv::imshow("scene image", *curr_image);
-//        cv::waitKey(200);
-        
+        last_image += pos_mask & pos_diff;
+        last_image -= neg_mask & neg_diff;
         
         // blast image
         if (explosion) {
-            cv::Mat blast_pos_diff = *curr_blast_image - *last_blast_image;
-            cv::Mat blast_neg_diff = *last_blast_image - *curr_blast_image;
+            cv::Mat blast_pos_diff = curr_blast_image - last_blast_image;
+            cv::Mat blast_neg_diff = last_blast_image - curr_blast_image;
 
             cv::Mat blast_pos_mask;
             cv::Mat blast_neg_mask;
@@ -381,47 +485,43 @@ void GazeboBlast3DCameraPlugin::processDelta(cv::Mat *last_image, cv::Mat *curr_
             cv::threshold(blast_neg_diff, blast_neg_mask, event_threshold, 255, cv::THRESH_BINARY);
             
             // TODO: requires double-check
-            *last_blast_image += blast_pos_mask & blast_pos_diff;
-            *last_blast_image -= blast_neg_mask & blast_neg_diff;
-            
-            // update the pos_mask and neg_mask with blast
-            cv::bitwise_or(pos_mask, blast_pos_mask, pos_mask);
-            cv::bitwise_or(neg_mask, blast_neg_mask, neg_mask);
-            // SUGGEST A REPLACEMENT OF THE PIXEL VALUE / INTENSITY
+            last_blast_image += blast_pos_mask & blast_pos_diff;
+            last_blast_image -= blast_neg_mask & blast_neg_diff;
+    
+            // Alpha blend the blast image with transparent background into the scene image
+            blast_pos_mask.copyTo(pos_mask, curr_blast_alpha);
+            blast_neg_mask.copyTo(neg_mask, curr_blast_alpha);
         }
         
-        this->fillEvents(&pos_mask, 0, events);
-        this->fillEvents(&neg_mask, 1, events);
+        this->fillEvents(pos_mask, 0, events);
+        this->fillEvents(neg_mask, 1, events);
         
-        
-        // For debug
+        // For debugging
 //        cv::Mat eventVis(pos_mask.size(), CV_8UC3, cv::Scalar(0, 0, 0));
-//        cv::Mat ch1, ch2, ch3; // declare three matrices 
 //        std::vector<cv::Mat> channels(3);
 //        cv::split(eventVis, channels);
-//        // get the channels (follow BGR order in OpenCV)
 //        channels[0] = neg_mask * 255;
 //        channels[2] = pos_mask * 255; 
 //        // modify channel// then merge
 //        cv::merge(channels, eventVis);
 //        cv::imshow("event image", eventVis);
-//        cv::waitKey(100);
+//        cv::waitKey(30);
 //        if (explosion) {
-//            cv::imshow("blast image", *curr_blast_image);
-//            cv::waitKey(200);
-//        }
+//            cv::imshow("blast image", curr_blast_image);
+//            cv::waitKey(30);
+//        }   
         
     } else {
-        gzwarn << "Unexpected change in image size (" << last_image->size() << " -> " << curr_image->size() << "). Publishing no events for this frame change." << endl;
+        gzwarn << "Unexpected change in image size (" << last_image.size() << " -> " << curr_image.size() << "). Publishing no events for this frame change." << endl;
     }
 }
 
-void GazeboBlast3DCameraPlugin::fillEvents(cv::Mat *mask, int polarity, std::vector<sensor_msgs::msgs::Event> *events) {
+void GazeboBlast3DCameraPlugin::fillEvents(cv::Mat &mask, int polarity, std::vector<sensor_msgs::msgs::Event> &events) {
     // findNonZero fails when there are no zeros
     // TODO is there a better workaround then iterating the binary image twice?
-    if (cv::countNonZero(*mask) != 0) {
+    if (cv::countNonZero(mask) != 0) {
         std::vector<cv::Point> locs;
-        cv::findNonZero(*mask, locs);
+        cv::findNonZero(mask, locs);
 
         for (int i = 0; i < locs.size(); i++) {
             sensor_msgs::msgs::Event event;
@@ -429,7 +529,7 @@ void GazeboBlast3DCameraPlugin::fillEvents(cv::Mat *mask, int polarity, std::vec
             event.set_y(locs[i].y);
             event.set_time(frame_time_us_);
             event.set_polarity(polarity);
-            events->push_back(event);
+            events.push_back(event);
         }
     }
 }

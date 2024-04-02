@@ -195,14 +195,15 @@ gazebo_blast3d/xacro$ gz sdf -p iris.urdf > iris.sdf
         <outputRate>20</outputRate>
         <always_on>1</always_on>
         <plugin name="event_camera_plugin" filename="libgazebo_blast3d_camera_plugin.so">
-            <blast3dVideoDataFolder>/home2/arwillis/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/video</blast3dVideoDataFolder>
+            <!--<blast3dVideoDataFolder>/home2/arwillis/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/video</blast3dVideoDataFolder>-->
+            <!--<blast3dVideoDataFolder>/home.md2/sparab2/wind/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/video</blast3dVideoDataFolder>-->
+            <blast3dVideoDataFolder>/home.md1/jzhang72/NetBeansProjects/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/video</blast3dVideoDataFolder>
+            <cameraMode>event</cameraMode>
             <cameraName>event_cam</cameraName>
             <frameName>/event_camera_link</frameName>
             <eventThreshold>1</eventThreshold>
-            <!--
-            <blast3dVideoDataFolder>/home.md2/sparab2/wind/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/video</blast3dVideoDataFolder>
-            -->
-            <blast3dImageTopic>event_image</blast3dImageTopic>
+            <blast3dRGBImageTopic>rgb_image</blast3dRGBImageTopic>
+            <blast3dEventImageTopic>event_image</blast3dEventImageTopic>
             <blast3dEventTopic>event_stream</blast3dEventTopic>       
         </plugin>
       </sensor>
@@ -353,7 +354,8 @@ gazebo_blast3d/xacro$ gz sdf -p iris.urdf > iris.sdf
       <robotNamespace></robotNamespace>
       <frameId>world</frameId>
       <linkName>/base_link</linkName>
-      <blast3dPressureDataFolder>/home2/arwillis/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/pressure</blast3dPressureDataFolder>
+      <!--<blast3dPressureDataFolder>/home2/arwillis/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/pressure</blast3dPressureDataFolder>-->
+      <blast3dPressureDataFolder>/home.md1/jzhang72/NetBeansProjects/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/pressure</blast3dPressureDataFolder>
       <blast3dServerRegisterLinkTopic>/gazebo/default/blast3d_register_link</blast3dServerRegisterLinkTopic>
       <blast3dServerLinkTopic>/gazebo/default/blast3d/base_link</blast3dServerLinkTopic>
     </plugin>
