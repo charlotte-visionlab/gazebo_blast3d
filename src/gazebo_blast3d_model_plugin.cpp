@@ -88,7 +88,7 @@ namespace gazebo {
         double current_time_double = current_time.Double();
 
         std::vector<blast3d_msgs::msgs::Blast3d>::iterator msg_iter;
-        for (msg_iter = blastMsgQueue.begin(); msg_iter != blastMsgQueue.end(); ++msg_iter) {
+        for (msg_iter = blastMsgList.begin(); msg_iter != blastMsgList.end(); ++msg_iter) {
             if (msg_iter->time() < current_time_double) {
                 // DO EFFECT OF BLAST HERE
                 ignition::math::Vector3d blastPosRelative(msg_iter->x(), msg_iter->y(), msg_iter->z());
@@ -116,11 +116,11 @@ namespace gazebo {
         }
         
         // delete those messages marked to occur at time == -1.0
-        blastMsgQueue.erase(
-                std::remove_if(blastMsgQueue.begin(), blastMsgQueue.end(),
+        blastMsgList.erase(
+                std::remove_if(blastMsgList.begin(), blastMsgList.end(),
                 [](const blast3d_msgs::msgs::Blast3d & msg) {
                     return msg.time() == -1.0; }),
-        blastMsgQueue.end());
+        blastMsgList.end());
     }
 
     void GazeboBlast3DModelPlugin::Blast3DCallback(Blast3dMsgPtr & blast3d_msg) {
@@ -134,7 +134,7 @@ namespace gazebo {
         msg_copy.set_weight_tnt_kg(blast3d_msg->weight_tnt_kg());
         msg_copy.set_time(blast3d_msg->time());
         //blastMsgQueue.push_back(*blast3d_msg);
-        blastMsgQueue.push_back(msg_copy);
+        blastMsgList.push_back(msg_copy);
     }
 
     void GazeboBlast3DModelPlugin::CreatePubsAndSubs() {

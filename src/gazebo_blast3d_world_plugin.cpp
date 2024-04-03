@@ -36,7 +36,7 @@ namespace gazebo {
 
         getSdfParam<std::string>(sdf, "blast3dServerRegisterLinkTopic", blast3d_server_reglink_topic_, blast3d_server_reglink_topic_);
 
-        // Wind topic publishing rates
+        // Blast topic publishing rates
         double pub_rate = 2.0;
         getSdfParam<double>(sdf, "publishRate", pub_rate, pub_rate);
         pub_interval_ = (pub_rate > 0.0) ? 1 / pub_rate : 0.0;

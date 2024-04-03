@@ -153,10 +153,11 @@ void GazeboBlast3DCameraPlugin::Load(sensors::SensorPtr _sensor, sdf::ElementPtr
     cv::glob(pattern, fn, true);    // recursive glob
     std::sort(fn.begin(), fn.end());    // sort file paths alphabetically
     
-    for (const auto& file : fn) {
+    for (const auto& file : fn) {        
         cv::Mat image = cv::imread(file, cv::IMREAD_UNCHANGED);
         assert(image.channels() == 4 &&  && "[gazebo_blast_camera_plugin] Blast images have to be RGBA with an alpha channel for image overlay to work.\n");
         if (!image.empty()) {
+            gzdbg << "Successfully read blast image " << file << std::endl;
             cv::Mat bgrImage;
             cv::cvtColor(image, bgrImage, cv::COLOR_BGRA2BGR);
             blastRGBImageVec.push_back(bgrImage);
@@ -169,7 +170,7 @@ void GazeboBlast3DCameraPlugin::Load(sensors::SensorPtr _sensor, sdf::ElementPtr
             cv::Mat alpha = channels[3];
             blastImageAlphaVec.push_back(alpha);
         } else {
-            std::cerr << "Could not read image: " << file << std::endl;
+            gzerr << "Could not read image: " << file << std::endl;
         }
     }
 

@@ -121,7 +121,7 @@ namespace gazebo {
         /// \brief    Pointer to the update event connection.
         event::ConnectionPtr updateConnection_;
 
-        std::vector<blast3d_msgs::msgs::Blast3d> blastMsgQueue;
+        std::vector<blast3d_msgs::msgs::Blast3d> blastMsgList;
         
         /// \brief  Reads blast data from a text file and saves it.
         /// \param[in] custom_blast3d_field_path Path to the wind field from ~/.ros.
