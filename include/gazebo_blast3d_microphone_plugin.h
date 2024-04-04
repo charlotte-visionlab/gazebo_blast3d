@@ -43,7 +43,7 @@ namespace gazebo {
         virtual void OnUpdate(const common::UpdateInfo& _info);
 
     private:
-        void PublishAudioMessage(AudioFile<float> background_audio_);
+        void PublishAudioMessage(std::vector<float>& sampleData);
 
         /// \brief    Flag that is set to true once CreatePubsAndSubs() is called, used
         ///           to prevent CreatePubsAndSubs() from be called on every OnUpdate().
@@ -91,13 +91,18 @@ namespace gazebo {
         std::string blast3d_audio_datafolder_;
 
         AudioFile<float> background_audio_;
-        AudioFile<float> bomb_audio_;
+        AudioFile<float> blast_audio_;
+        
+        int pubBitDepth;
+        float pubSampleRate;
+        int pubBufSize;
 
         std::vector<std::vector<float>> output_buffer_background, output_buffer_pub;
 
         int background_audio_index_; // Index for the current position in the background audio.
         bool explosion_triggered_; // Flag to indicate whether the explosion has been triggered.
-        //        bool load (std::string filePath);
+        
+        double airAttenuationCoeff;
     };
 }
 #endif /* GAZEBO_BLAST3D_MICROPHONE_PLUGIN_H */
