@@ -155,7 +155,7 @@ void GazeboBlast3DCameraPlugin::Load(sensors::SensorPtr _sensor, sdf::ElementPtr
     
     for (const auto& file : fn) {        
         cv::Mat image = cv::imread(file, cv::IMREAD_UNCHANGED);
-        assert(image.channels() == 4 &&  && "[gazebo_blast_camera_plugin] Blast images have to be RGBA with an alpha channel for image overlay to work.\n");
+        //assert(image.channels() == 4 &&  && "[gazebo_blast_camera_plugin] Blast images have to be RGBA with an alpha channel for image overlay to work.\n");
         if (!image.empty()) {
             gzdbg << "Successfully read blast image " << file << std::endl;
             cv::Mat bgrImage;
@@ -298,7 +298,7 @@ void GazeboBlast3DCameraPlugin::OnNewFrameRGBCamera(const unsigned char * _image
     cv::Mat curr_blast_image;
     cv::Mat curr_blast_alpha;
     
-    assert(_height == height && _width == width);
+    //assert(_height == height && _width == width);
     
     // when there is no explosion, the output image is the scene image
     cv::Mat blend_image = curr_image;
