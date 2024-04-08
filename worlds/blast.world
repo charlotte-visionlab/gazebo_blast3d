@@ -1,7 +1,7 @@
 <!-- -->
 <?xml version="1.0" ?>
 <sdf version="1.5">
-  <world name="default">
+  <world name="blast">
     <!-- A global light source -->
     <include>
       <uri>model://sun</uri>
