@@ -167,6 +167,21 @@ namespace gazebo {
             CreatePubsAndSubs();
             pubs_and_subs_created_ = true;
         }
+
+//#if GAZEBO_MAJOR_VERSION >= 9
+//        common::Time now = world_->SimTime();
+//#else
+//        common::Time now = world_->GetSimTime();
+//#endif
+//        if (!pubs_and_subs_created_) {
+//            CreatePubsAndSubs();
+//            pubs_and_subs_created_ = true;
+//        }
+//
+//        if ((now - last_time_).Double() < pub_interval_ || pub_interval_ == 0.0) {
+//            return;
+//        }
+//        last_time_ = now;
         
 //         Packetize the audio file
         size_t packetSize = std::floor(pub_interval_ * this->pubSampleRate);
