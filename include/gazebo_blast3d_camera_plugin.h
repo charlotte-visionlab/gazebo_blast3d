@@ -33,6 +33,8 @@
 #include "Event.pb.h"
 #include "EventArray.pb.h"
 #include "OpticalFlow.pb.h"
+#include "Blast3d.pb.h"
+#include "Blast3dServerRegistration.pb.h"
 
 #include <opencv2/opencv.hpp>
 #include <iostream>
@@ -138,72 +140,122 @@ using namespace std;
 namespace gazebo
 {
     // Constants
+    static const bool kPrintOnMsgCallback = false;
     static const bool kPrintOnPluginLoad = true;
-  static const std::string kDefaultGyroTopic = "/px4flow/imu";
+    static const std::string kDefaultGyroTopic = "/px4flow/imu";
+    static const std::string kDefaultNamespace = "";
+    static const std::string kDefaultFrameId = "world";
+    static const std::string kDefaultBlast3dServerRegisterTopic_model = "/gazebo/default/blast3d_register_link";
+    static const std::string kDefaultBlast3dTopic = "blast3d";
+    static const std::string kDefaultLinkName = "base_link";
+
+    typedef const boost::shared_ptr<const blast3d_msgs::msgs::Blast3d>& Blast3dMsgPtr;
 
   class GAZEBO_VISIBLE GazeboBlast3DCameraPlugin : public SensorPlugin
   {
     public:
-      GazeboBlast3DCameraPlugin();
-      virtual ~GazeboBlast3DCameraPlugin();
-      virtual void Load(sensors::SensorPtr _sensor, sdf::ElementPtr _sdf);
-      virtual void OnNewFrameRGBCamera(const unsigned char * _image);
-      virtual void OnNewFrameOpticalFlow(const unsigned char *_image,
-                              unsigned int _width, unsigned int _height,
-                              unsigned int _depth, const std::string &_format);
-      virtual void OnNewFrameEventCamera(const unsigned char *_image,
-                              unsigned int _width, unsigned int _height,
-                              unsigned int _depth, const std::string &_format);
-      virtual void ImuCallback(ConstIMUPtr& _imu);
-      virtual void processDelta(cv::Mat &last_image, cv::Mat &curr_image, cv::Mat &last_blast_image, 
-                                cv::Mat &curr_blast_image, cv::Mat &curr_blast_alaph, 
-                                std::vector<sensor_msgs::msgs::Event> &events,
-                                bool explosion=false);
-      virtual void fillEvents(cv::Mat &diff, int polarity, vector<sensor_msgs::msgs::Event> &events);
+        GazeboBlast3DCameraPlugin();
+        virtual ~GazeboBlast3DCameraPlugin();
+        virtual void Load(sensors::SensorPtr _sensor, sdf::ElementPtr _sdf);
+        virtual void OnNewFrameOpticalFlow(const unsigned char *_image,
+                                unsigned int _width, unsigned int _height,
+                                unsigned int _depth, const std::string &_format);
+        virtual void OnNewFrameCamera(const unsigned char * _image);
+        virtual void ImuCallback(ConstIMUPtr& _imu);
+        virtual void processDelta(cv::Mat &last_image, cv::Mat &curr_image, cv::Mat &last_blast_image, 
+                                  cv::Mat &curr_blast_image, cv::Mat &curr_blast_alaph, 
+                                  std::vector<sensor_msgs::msgs::Event> &events, double roll=0.0,
+                                  bool explosion=false);
+        virtual void fillEvents(cv::Mat &diff, int polarity, vector<sensor_msgs::msgs::Event> &events);
+
+        virtual void blendEventOutput(double roll);
+        virtual void blendRGBOutput();
+        virtual void PublishEventMessage(std::vector<sensor_msgs::msgs::Event> events);
+        virtual void PublishRGBMessage(cv::Mat image);
 
     protected:
-      unsigned int width, height, depth;
-      std::string format;
-      sensors::CameraSensorPtr parentSensor;
-      rendering::CameraPtr camera;
-      physics::WorldPtr world;
+        unsigned int width, height, depth;
+        std::string format;
+        sensors::CameraSensorPtr parentSensor;
+        rendering::CameraPtr camera;
 
     private:
-      event::ConnectionPtr newFrameConnection;
-      cv::Mat last_image;
-      cv::Mat last_blast_image;
-      int last_blast_image_idx;
-      bool has_last_image;
-      bool has_last_blast_image;
-      float event_threshold;
-      transport::PublisherPtr opticalFlow_pub_;
-      transport::PublisherPtr eventCamera_pub_;
-      transport::PublisherPtr rgbCamera_pub_;
-      transport::NodePtr node_handle_;
-      transport::SubscriberPtr imuSub_;
-      gazebo::msgs::Image rgbCamera_message;
-      sensor_msgs::msgs::Event eventCameraEvent_message;
-      sensor_msgs::msgs::EventArray eventCameraEventArray_message;
-      sensor_msgs::msgs::OpticalFlow opticalFlow_message;
-      ignition::math::Vector3d opticalFlow_rate;
-      std::string namespace_;
-      std::string gyro_sub_topic_;
-      std::string blast3d_video_datafolder_;
-      std::string blast3d_rgb_image_topic_, blast3d_event_image_topic_, blast3d_event_topic_;
-      std::string camera_mode_;
-      OpticalFlowOpenCV *optical_flow_;
-      // OpticalFlowPX4 *optical_flow_;
-      std::vector<cv::Mat> blastRGBImageVec;
-      std::vector<cv::Mat> blastGrayImageVec;
-      std::vector<cv::Mat> blastImageAlphaVec;
+        /// \brief    Flag that is set to true once CreatePubsAndSubs() is called, used
+        ///           to prevent CreatePubsAndSubs() from be called on every OnUpdate().
+        bool pubs_and_subs_created_;
 
-      float hfov_;
-      int dt_us_;
-      int output_rate_;
-      float focal_length_;
-      double first_frame_time_;
-      uint32_t frame_time_us_;
-      bool has_gyro_;
+        /// \brief    Creates all required publishers and subscribers, incl. routing of messages to/from ROS if required.
+        /// \details  Call this once the first time OnUpdate() is called (can't
+        ///           be called from Load() because there is no guarantee GazeboRosInterfacePlugin has
+        ///           has loaded and listening to ConnectGazeboToRosTopic and ConnectRosToGazeboTopic messages).
+        void CreatePubsAndSubs();
+
+        void Blast3DCallback(Blast3dMsgPtr& blast3d_msg);
+        
+        /// \brief    Pointer to the update event connection.
+        event::ConnectionPtr newFrameConnection;
+        
+        std::vector<blast3d_msgs::msgs::Blast3d> blastMsgList;
+
+        /// \brief    Frame ID for Blast3d messages.
+        std::string frame_id_;
+        std::string link_name_;
+
+        /// \brief    Pointer to the sensor
+        sensors::SensorPtr sensor_;
+        physics::WorldPtr world_;
+
+        /// \brief    Pointer to the link.
+        physics::LinkPtr link_;
+
+        common::Time last_time_;
+        double pub_interval_;
+
+        std::string blast3d_server_reglink_topic_;
+        std::string blast3d_server_link_topic_;
+
+        /// \brief    Blast3d model plugin publishers and subscribers
+        gazebo::transport::PublisherPtr blast3d_server_register_pub_;
+        gazebo::transport::SubscriberPtr blast3d_server_msg_sub_;
+        
+        std::string parentModelName;
+        
+        cv::Mat input_image;
+        cv::Mat last_image;
+        cv::Mat last_blast_image;
+        int last_blast_image_idx;
+        bool has_last_image;
+        bool has_last_blast_image;
+        float event_threshold;
+        transport::PublisherPtr opticalFlow_pub_;
+        transport::PublisherPtr eventCamera_pub_;
+        transport::PublisherPtr rgbCamera_pub_;
+        transport::NodePtr node_handle_;
+        transport::SubscriberPtr imuSub_;
+        gazebo::msgs::Image rgbCamera_message;
+        sensor_msgs::msgs::Event eventCameraEvent_message;
+        sensor_msgs::msgs::EventArray eventCameraEventArray_message;
+        sensor_msgs::msgs::OpticalFlow opticalFlow_message;
+        ignition::math::Vector3d opticalFlow_rate;
+        std::string namespace_;
+        std::string gyro_sub_topic_;
+        std::string blast3d_video_datafolder_;
+        std::string blast3d_rgb_image_topic_, blast3d_event_image_topic_, blast3d_event_topic_;
+        std::string camera_mode_;
+        OpticalFlowOpenCV *optical_flow_;
+        // OpticalFlowPX4 *optical_flow_;
+        std::vector<cv::Mat> blastRGBImageVec;
+        std::vector<cv::Mat> blastGrayImageVec;
+        std::vector<cv::Mat> blastImageAlphaVec;
+
+        float hfov_;
+        int dt_us_;
+        int output_rate_;
+        float focal_length_;
+        double first_frame_time_;
+        uint32_t frame_time_us_;
+        bool has_gyro_;
+        bool explosion_triggered_; // Flag to indicate whether the explosion has been triggered.
   };
 }
 #endif /* GAZEBO_BLAST3D_CAMERA_PLUGIN_H */

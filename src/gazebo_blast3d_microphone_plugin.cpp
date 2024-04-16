@@ -135,7 +135,7 @@ namespace gazebo {
         airAttenuationCoeff = 2 * etaAir * omegaAir * omegaAir / (3 * rhoAir * 340 * 340 * 340);
         
         
-        int NUM_COPIES = 3;
+        int NUM_COPIES = 4; // blast future time is randomized from 1 to 3 seconds and blast signal is 0.99 second
         pubBufSize = background_audio_.samples[0].size() * NUM_COPIES;
         output_buffer_background.resize(background_audio_.samples.size());
         output_buffer_pub.resize(background_audio_.samples.size());
@@ -154,34 +154,36 @@ namespace gazebo {
         getSdfParam<std::string>(_sdf, "blast3dServerLinkTopic", blast3d_server_link_topic_,
                 blast3d_server_link_topic_);
 
-        audio_pub_ = node_handle_->Advertise<sensor_msgs::msgs::Audio>(blast3d_audio_topic_, pub_rate);
+        audio_pub_ = node_handle_->Advertise<sensor_msgs::msgs::Audio>(blast3d_audio_topic_, 1);
         updateConnection_ = event::Events::ConnectWorldUpdateBegin(
                 boost::bind(&GazeboBlast3DMicrophonePlugin::OnUpdate, this, _1));
+        
+#if GAZEBO_MAJOR_VERSION >= 9
+        last_time_ = world_->SimTime();
+#else
+        last_time_ = world_->GetSimTime();
+#endif
     }
 
     /////////////////////////////////////////////////
 
     void GazeboBlast3DMicrophonePlugin::OnUpdate(const common::UpdateInfo& _info) {
+        
+#if GAZEBO_MAJOR_VERSION >= 9
+        common::Time now = world_->SimTime();
+#else
+        common::Time now = world_->GetSimTime();
+#endif
        
         if (!pubs_and_subs_created_) {
             CreatePubsAndSubs();
             pubs_and_subs_created_ = true;
         }
 
-//#if GAZEBO_MAJOR_VERSION >= 9
-//        common::Time now = world_->SimTime();
-//#else
-//        common::Time now = world_->GetSimTime();
-//#endif
-//        if (!pubs_and_subs_created_) {
-//            CreatePubsAndSubs();
-//            pubs_and_subs_created_ = true;
-//        }
-//
-//        if ((now - last_time_).Double() < pub_interval_ || pub_interval_ == 0.0) {
-//            return;
-//        }
-//        last_time_ = now;
+        if ((now - last_time_).Double() < pub_interval_ || pub_interval_ == 0.0) {
+            return;
+        }
+        last_time_ = now;
         
 //         Packetize the audio file
         size_t packetSize = std::floor(pub_interval_ * this->pubSampleRate);
@@ -263,9 +265,9 @@ namespace gazebo {
         
         // Apply sound attenuation based on the distance
         // https://en.wikipedia.org/wiki/Stokes%27s_law_of_sound_attenuation
-        gzdbg << "airAttenuationCoeff = " << airAttenuationCoeff << std::endl;
+//        gzdbg << "airAttenuationCoeff = " << airAttenuationCoeff << std::endl;
         double airAttenuationRate = std::exp(-airAttenuationCoeff * free_space_distance);
-        gzdbg << "airAttenuationRate = " << airAttenuationRate << std::endl;
+//        gzdbg << "airAttenuationRate = " << airAttenuationRate << std::endl;
         AudioFile<float> airBlastAudio = blast_audio_;
         // Multiply each element of the vector by the rate
         std::transform(airBlastAudio.samples[0].begin(), airBlastAudio.samples[0].end(), airBlastAudio.samples[0].begin(),
@@ -284,12 +286,12 @@ namespace gazebo {
         size_t maxEndIdx = std::max(seismicSignalEndIdx, airSignalEndIdx);
         if (maxEndIdx > output_buffer_pub[0].size()) {
             if (maxEndIdx - output_buffer_pub[0].size() < background_audio_.samples[0].size()) { // safety check
-                gzdbg << "Increasing the output buffer." << std::endl;
+//                gzdbg << "Increasing the output buffer." << std::endl;
                 std::copy(background_audio_.samples[0].begin(), background_audio_.samples[0].begin() + maxEndIdx - output_buffer_pub[0].size(),
                             std::back_inserter(output_buffer_pub[0]));
             }
             else{
-                gzerr << "Signal index is too big. There is likely something wrong in time of arrival calculation or blast messages." << std::endl;
+                gzwarn << "Blast signal end index exceeds the length of buffer. Increase the buffer size or reduce the future time of the blast." << std::endl;
             }
         }
 
@@ -344,12 +346,12 @@ namespace gazebo {
                 &GazeboBlast3DMicrophonePlugin::Blast3DCallback, this);
 
         // Register this plugin with the world dynamic wind server
-        blast3d_msgs::msgs::Blast3dServerRegistration register_msg;
-        register_msg.set_link_name(link_name_);
-        register_msg.set_model_name(model_->GetName());
-        register_msg.set_namespace_(namespace_);
-        register_msg.set_link_wind_topic(blast3d_server_link_topic_);
-        blast3d_server_register_pub_->Publish(register_msg);
+//        blast3d_msgs::msgs::Blast3dServerRegistration register_msg;
+//        register_msg.set_link_name(link_name_);
+//        register_msg.set_model_name(model_->GetName());
+//        register_msg.set_namespace_(namespace_);
+//        register_msg.set_link_wind_topic(blast3d_server_link_topic_);
+//        blast3d_server_register_pub_->Publish(register_msg);
         gzdbg << __FUNCTION__ << "() model plugin registering to world blast plugin server on topic " <<
                 blast3d_server_reglink_topic_ << "." << std::endl;
 
