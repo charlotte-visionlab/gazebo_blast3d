@@ -405,7 +405,7 @@ void GazeboBlast3DCameraPlugin::blendEventOutput(double roll){
             this->last_blast_image = curr_blast_image;
             this->last_image = curr_image;
             // reset when it exceeds the file range 
-            if (this->last_blast_image_idx >= (blastGrayImageVec.size() - 1)) {  // blast image end index (controls the duration of the blast)
+            if (this->last_blast_image_idx >= 30) { //(blastGrayImageVec.size() - 1)) {  // blast image end index (controls the duration of the blast)
                 this->has_last_blast_image = false;
                 explosion_triggered_ = false;   // when a blast is finished, reset the trigger
             }
@@ -465,7 +465,7 @@ void GazeboBlast3DCameraPlugin::blendRGBOutput(){
             this->last_blast_image_idx += 1;
             this->last_blast_image = curr_blast_image;
             // reset when it exceeds the file range (currently having 61 images)
-            if (this->last_blast_image_idx >= (blastGrayImageVec.size() - 1)) {  // blast image end index (controls the duration of the blast)
+            if (this->last_blast_image_idx >= 30) { //(blastGrayImageVec.size() - 1)) {  // blast image end index (controls the duration of the blast)
                 this->has_last_blast_image = false;
                 explosion_triggered_ = false;   // when a blast is finished, reset the trigger
             }

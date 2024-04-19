@@ -41,6 +41,7 @@ namespace gazebo {
         virtual ~GazeboBlast3DMicrophonePlugin();
         virtual void Load(physics::ModelPtr _model, sdf::ElementPtr _sdf);
         virtual void OnUpdate(const common::UpdateInfo& _info);
+        std::vector<float> averageFilterWithCutoff(std::vector<float>& signal, float cutoffFreq, float samplingFreq);
 
     private:
         void PublishAudioMessage(std::vector<float>& sampleData);
@@ -92,6 +93,9 @@ namespace gazebo {
 
         AudioFile<float> background_audio_;
         AudioFile<float> blast_audio_;
+        
+        AudioFile<float> seismicAudio;
+        AudioFile<float> airBlastAudio;
         
         int pubBitDepth;
         float pubSampleRate;

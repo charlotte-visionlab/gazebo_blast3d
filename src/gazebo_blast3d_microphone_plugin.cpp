@@ -118,8 +118,34 @@ namespace gazebo {
             gzerr << "Failed to load blast audio file: " << blast_file << std::endl;
         }
         
+        seismicAudio = blast_audio_;
+        airBlastAudio = blast_audio_;
+        
         pubBitDepth = background_audio_.getBitDepth();
         pubSampleRate = background_audio_.getSampleRate();
+        
+        // Apply the average filter to the seismic audio
+        int windowSize = 6;
+        float samplingFreq = seismicAudio.getSampleRate();
+        float cutoffFreq = 25; // Hz
+
+        // Apply the average filter with cutoff frequency
+        std::vector<float> filteredSignal;
+        std::vector<float> seismicSignal = seismicAudio.samples[0];
+        filteredSignal = averageFilterWithCutoff(seismicSignal, cutoffFreq, samplingFreq);
+        for (int channel = 0; channel < seismicAudio.samples.size(); channel++) {
+            seismicAudio.samples[channel] = filteredSignal;
+        }
+        // For debugging
+//        AudioFile<float> a;
+//        a.setNumChannels (1);
+//        a.setNumSamplesPerChannel (filteredSignal.size());
+//        a.setBitDepth (this->pubBitDepth);
+//        a.samples[0] = filteredSignal;
+//        std::string filename = "filtered_seismic";
+//        filename = filename + ".wav";
+//        std::string filePath = blast3d_audio_datafolder_ + "/../" + filename; 
+//        a.save(filePath, AudioFileFormat::Wave);
         
         // temperature in Kelvin
         double T = 313; // 40 degree Celsius (close to the blast)
@@ -260,15 +286,12 @@ namespace gazebo {
         double time_of_arrival_seismic = 0.91 * pow(ground_distance, (1.03)) * pow(Q, (-0.02)) / Cs + ground_2_uav_distance / avg_speed_free_space;
 
         float backgroundAudioSampleRate = background_audio_.getSampleRate();
-        // IF SEISMIC_BOOM ADD SEISMIC_BOOM AUDIO
-        AudioFile<float> seismicAudio = blast_audio_;
         
         // Apply sound attenuation based on the distance
         // https://en.wikipedia.org/wiki/Stokes%27s_law_of_sound_attenuation
 //        gzdbg << "airAttenuationCoeff = " << airAttenuationCoeff << std::endl;
         double airAttenuationRate = std::exp(-airAttenuationCoeff * free_space_distance);
 //        gzdbg << "airAttenuationRate = " << airAttenuationRate << std::endl;
-        AudioFile<float> airBlastAudio = blast_audio_;
         // Multiply each element of the vector by the rate
         std::transform(airBlastAudio.samples[0].begin(), airBlastAudio.samples[0].end(), airBlastAudio.samples[0].begin(),
                    [airAttenuationRate](float value) { return value * airAttenuationRate; });
@@ -355,5 +378,35 @@ namespace gazebo {
         gzdbg << __FUNCTION__ << "() model plugin registering to world blast plugin server on topic " <<
                 blast3d_server_reglink_topic_ << "." << std::endl;
 
+    }
+    
+    // Function to apply an average filter to a signal
+    std::vector<float> GazeboBlast3DMicrophonePlugin::averageFilterWithCutoff(std::vector<float>& signal, float cutoffFreq, float samplingFreq) {
+        std::vector<float> filteredSignal;
+        filteredSignal.reserve(signal.size());
+
+        // Calculate the window size based on the cutoff frequency
+        float windowSize = samplingFreq / (2.0 * cutoffFreq);
+
+        // Ensure the window size is odd
+        int windowSizeInt = static_cast<int>(windowSize);
+        if (windowSizeInt % 2 == 0) {
+            windowSizeInt++; // Make it odd
+        }
+
+        // Apply the filter
+        for (size_t i = 0; i < signal.size(); ++i) {
+            float sum = 0.0;
+            int count = 0;
+            for (int j = i - windowSizeInt/2; j <= i + windowSizeInt/2; ++j) {
+                if (j >= 0 && j < signal.size()) {
+                    sum += signal[j];
+                    ++count;
+                }
+            }
+            filteredSignal.push_back(sum / count);
+        }
+
+        return filteredSignal;
     }
 }
