@@ -117,7 +117,7 @@ namespace gazebo {
         float blastLikelihood = 0.15;
         if (blast_occurs > blastLikelihood)
             return;
-        std::uniform_real_distribution<double> distrFF(5.0, 15.0);
+        std::uniform_real_distribution<double> distrFF(2.0, 6.0);
         float weight_TNT_kg = distrFF(generator);
         std::uniform_real_distribution<double> distrTime(1.0, 3.0);
         double futureTime = distrTime(generator);

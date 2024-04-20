@@ -276,11 +276,16 @@ namespace gazebo {
         float Q = blast3d_msg->weight_tnt_kg();
         float Ca = 340; //air speed
         float Cs = 6000; //solid speed
-        double future_time = blast3d_msg->time();
+         // calculate the time delay of the blast from now. The blast3d_msg->time() is the timestamp from the start time when timestamp is 0.
+        double future_time = blast3d_msg->time() - current_time_double;
+        if (future_time < 0) {
+            gzdbg << "Blast happened in the past time. " << std::endl;
+            return;
+        }
         ignition::math::Vector3d blastPosRelative(blast3d_msg->x(), blast3d_msg->y(), blast3d_msg->z());
         float free_space_distance = blastPosRelative.Length();
         float ground_distance = std::sqrt(blast3d_msg->x() * blast3d_msg->x() + blast3d_msg->y() * blast3d_msg->y());
-        float ground_2_uav_distance = blast3d_msg->z();
+        float ground_2_uav_distance = std::abs(blast3d_msg->z());
         double time_of_arrival_free_space = 0.34 * pow(free_space_distance, (1.4)) * pow(Q, (-0.2)) / Ca;
         double avg_speed_free_space = free_space_distance / time_of_arrival_free_space;
         double time_of_arrival_seismic = 0.91 * pow(ground_distance, (1.03)) * pow(Q, (-0.02)) / Cs + ground_2_uav_distance / avg_speed_free_space;
@@ -315,6 +320,7 @@ namespace gazebo {
             }
             else{
                 gzwarn << "Blast signal end index exceeds the length of buffer. Increase the buffer size or reduce the future time of the blast." << std::endl;
+                return;
             }
         }
 
@@ -355,7 +361,7 @@ namespace gazebo {
 //            std::copy(background_audio_.samples[0].begin(), background_audio_.samples[0].begin() + len,
 //                    std::back_inserter(output_buffer_pub[0]));
 //        }
-    }
+        }
 
     void GazeboBlast3DMicrophonePlugin::CreatePubsAndSubs() {
         // Gazebo publishers and subscribers
