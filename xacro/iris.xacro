@@ -361,6 +361,8 @@ gazebo_blast3d/xacro$ gz sdf -p iris.urdf > iris.sdf
       <blast3dPressureDataFolder>/home.md1/jzhang72/NetBeansProjects/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/pressure</blast3dPressureDataFolder>
       <blast3dServerRegisterLinkTopic>/gazebo/default/blast3d_register_link</blast3dServerRegisterLinkTopic>
       <blast3dServerLinkTopic>/gazebo/default/blast3d/base_link</blast3dServerLinkTopic>
+      <blastForceLinearMax>500</blastForceLinearMax>
+      <blastForceTorqueMax>500</blastForceTorqueMax>
     </plugin>
 
     <plugin name='magnetometer_plugin' filename='libgazebo_magnetometer_plugin.so'>

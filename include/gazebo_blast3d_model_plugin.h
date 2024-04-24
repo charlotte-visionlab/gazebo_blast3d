@@ -90,9 +90,7 @@ namespace gazebo {
 
         /// \brief    Handle for the Gazebo node.
         gazebo::transport::NodePtr node_handle_;
-
-        double pub_interval_;
-
+        
         /// \brief    Topic name for blast3d messages.
         std::string blast3d_server_reglink_topic_;
         std::string blast3d_server_link_topic_;
@@ -122,6 +120,12 @@ namespace gazebo {
         event::ConnectionPtr updateConnection_;
 
         std::vector<blast3d_msgs::msgs::Blast3d> blastMsgList;
+        
+        
+        double pub_interval_;
+        
+        double blast_force_linear_max;
+        double blast_force_torque_max;
         
         /// \brief  Reads blast data from a text file and saves it.
         /// \param[in] custom_blast3d_field_path Path to the wind field from ~/.ros.

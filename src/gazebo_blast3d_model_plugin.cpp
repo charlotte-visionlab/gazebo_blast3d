@@ -66,6 +66,8 @@ namespace gazebo {
                 blast3d_server_reglink_topic_);
         getSdfParam<std::string>(_sdf, "blast3dServerLinkTopic", blast3d_server_link_topic_,
                 blast3d_server_link_topic_);
+        getSdfParam<double>(_sdf, "blastForceTorqueMax", blast_force_torque_max, blast_force_torque_max);
+        getSdfParam<double>(_sdf, "blastForceLinearMax", blast_force_linear_max, blast_force_linear_max);
 
         // Listen to the update event. This event is broadcast every simulation
         // iteration.
@@ -101,7 +103,12 @@ namespace gazebo {
                     ignition::math::Vector3d blastPos = linkPos + blastPosRelative;
 
                     ignition::math::Vector3d forceOnLink = 1.0e5 * (weight_TNT_kg / (distance * distance)) * (blastPosRelative / blastPosRelative.Length());
+                    double forceStrength = forceOnLink.Length();
+                    if (forceStrength > blast_force_linear_max) {
+                        forceOnLink *= blast_force_linear_max / forceStrength;
+                    }
                     link_->AddForce(forceOnLink);
+//                    link_->AddTorque(torque_vec);
                     gzdbg << __FUNCTION__ << "() exerting force (X,Y,Z)=(" <<
                             forceOnLink.X() << ", " << forceOnLink.Y() << ", " <<
                             forceOnLink.Z() << ") from blast model plugin for blast at time " <<

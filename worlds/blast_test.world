@@ -20,13 +20,17 @@ gz model --verbose --spawn-file="${modelpath}/${model}/${model_name}.sdf" --mode
     <include>
       <uri>model://sun</uri>
     </include>
-    <!-- A ground plane -->
     <include>
+      <uri>model://uncc_engcampus</uri>
+      <pose>0 0 0 0 0 0</pose>
+    </include>
+    <!-- A ground plane -->
+    <!-- <include>
       <uri>model://ground_plane</uri>
     </include>
     <include>
       <uri>model://asphalt_plane</uri>
-    </include>
+    </include>-->
     <!-- -->
     <plugin name='blast3d_plugin' filename='libgazebo_blast3d_world_plugin.so'>
       <publishRate>0.5</publishRate>
