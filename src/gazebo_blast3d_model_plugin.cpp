@@ -101,17 +101,36 @@ namespace gazebo {
                     double weight_TNT_kg = msg_iter->weight_tnt_kg();
                     ignition::math::Vector3d linkPos = link_->WorldPose().Pos();
                     ignition::math::Vector3d blastPos = linkPos + blastPosRelative;
-
-                    ignition::math::Vector3d forceOnLink = 1.0e5 * (weight_TNT_kg / (distance * distance)) * (blastPosRelative / blastPosRelative.Length());
+                    // TODO: improve the fitting function for force and torque when more data is available 
+                    double r = blastPosRelative.Length();
+                    double az = std::atan2(msg_iter->y(), msg_iter->x());
+                    double el = std::acos(msg_iter->z() / r);
+                    double forceAxial = 6.6648*std::pow(r, -2.0277) + 1.3775*az + 0.6497*el + 0.1989*weight_TNT_kg + 0.8398; // x-axis
+                    double forceSide = 6.7531*std::pow(r, -2.0256) + 1.3774*az + 0.6498*el + 0.1991*weight_TNT_kg + 0.8398; // y-axis
+                    double forceNormal = 23.0588*std::pow(r, -2.2034) + 1.3772 *az + 0.6500*el + 0.1995*weight_TNT_kg + 0.8399; // z-axis
+                    ignition::math::Vector3d forceOnLink(forceAxial, forceSide, forceNormal); 
+                    // ignition::math::Vector3d forceOnLink = 1.0e5 * (weight_TNT_kg / (distance * distance)) * (blastPosRelative / blastPosRelative.Length());
                     double forceStrength = forceOnLink.Length();
                     if (forceStrength > blast_force_linear_max) {
                         forceOnLink *= blast_force_linear_max / forceStrength;
                     }
+                    double momentL = -0.4608*std::pow(r, -2.5689) + 1.3781*az + 0.6492*el + 0.1977*weight_TNT_kg + 0.8395; // x-axis
+                    double momentM = -10.9884*std::pow(r, -25.8430) + 2.0256*az + 0.0485*el - 1.1764*weight_TNT_kg + 0.5647; // y-axis
+                    double momentN =  675.3351*std::pow(r, -2.0257) + 1.3118*az + 0.7137*el + 0.3418*weight_TNT_kg + 0.8684; // z-axis
+                    ignition::math::Vector3d torqueOnLink(momentL, momentM, momentN); 
+                    double torqueStrength = torqueOnLink.Length();
+                    if (torqueStrength > blast_force_torque_max) {
+                        torqueOnLink *= blast_force_torque_max / torqueStrength;
+                    }
                     link_->AddForce(forceOnLink);
-//                    link_->AddTorque(torque_vec);
+                    link_->AddTorque(torqueOnLink);
                     gzdbg << __FUNCTION__ << "() exerting force (X,Y,Z)=(" <<
                             forceOnLink.X() << ", " << forceOnLink.Y() << ", " <<
                             forceOnLink.Z() << ") from blast model plugin for blast at time " <<
+                            msg_iter->time() << "." << std::endl;
+                    gzdbg << __FUNCTION__ << "() exerting torque (X,Y,Z)=(" <<
+                            torqueOnLink.X() << ", " << torqueOnLink.Y() << ", " <<
+                            torqueOnLink.Z() << ") from blast model plugin for blast at time " <<
                             msg_iter->time() << "." << std::endl;
                     // mark for deletion
                     msg_iter->set_time(-1.0);
