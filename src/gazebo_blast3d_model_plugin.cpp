@@ -101,23 +101,33 @@ namespace gazebo {
                     double weight_TNT_kg = msg_iter->weight_tnt_kg();
                     ignition::math::Vector3d linkPos = link_->WorldPose().Pos();
                     ignition::math::Vector3d blastPos = linkPos + blastPosRelative;
-                    // TODO: improve the fitting function for force and torque when more data is available 
+                    // FORCE 
                     double r = blastPosRelative.Length();
-                    double az = std::atan2(msg_iter->y(), msg_iter->x());
-                    double el = std::acos(msg_iter->z() / r);
-                    double forceAxial = 6.6648*std::pow(r, -2.0277) + 1.3775*az + 0.6497*el + 0.1989*weight_TNT_kg + 0.8398; // x-axis
-                    double forceSide = 6.7531*std::pow(r, -2.0256) + 1.3774*az + 0.6498*el + 0.1991*weight_TNT_kg + 0.8398; // y-axis
-                    double forceNormal = 23.0588*std::pow(r, -2.2034) + 1.3772 *az + 0.6500*el + 0.1995*weight_TNT_kg + 0.8399; // z-axis
-                    ignition::math::Vector3d forceOnLink(forceAxial, forceSide, forceNormal); 
+                    double az = std::atan2(msg_iter->y(), msg_iter->x());   // phi
+                    double el = std::acos(msg_iter->z() / r);   // theta
+                    double x = sin(az + M_PI) * cos(M_PI - el);
+                    double y = sin(az + M_PI) * sin(M_PI - el);
+                    double z = cos(az + M_PI);
+                    ignition::math::Vector3d dir = {x, y, z};
+                    double forceImpulseNs = 2.2116 * std::pow(r, -2.1604) * 2.2116 * weight_TNT_kg + 0.0196;
+                    ignition::math::Vector3d forceImpulseOnLink = forceImpulseNs * dir; 
+                    // convert the impulses into ~1ms long step functions 
+                    ignition::math::Vector3d forceOnLink = forceImpulseOnLink / 0.001;
                     // ignition::math::Vector3d forceOnLink = 1.0e5 * (weight_TNT_kg / (distance * distance)) * (blastPosRelative / blastPosRelative.Length());
                     double forceStrength = forceOnLink.Length();
                     if (forceStrength > blast_force_linear_max) {
                         forceOnLink *= blast_force_linear_max / forceStrength;
                     }
-                    double momentL = -0.4608*std::pow(r, -2.5689) + 1.3781*az + 0.6492*el + 0.1977*weight_TNT_kg + 0.8395; // x-axis
-                    double momentM = -10.9884*std::pow(r, -25.8430) + 2.0256*az + 0.0485*el - 1.1764*weight_TNT_kg + 0.5647; // y-axis
-                    double momentN =  675.3351*std::pow(r, -2.0257) + 1.3118*az + 0.7137*el + 0.3418*weight_TNT_kg + 0.8684; // z-axis
-                    ignition::math::Vector3d torqueOnLink(momentL, momentM, momentN); 
+                    // TORQUE
+                    std::vector<double> blastCoords = {sin(az) * cos(el), sin(el) * sin(el), cos(az)};
+                    // cross product
+                    ignition::math::Vector3d momentDir = {blastCoords[1] * forceImpulseOnLink[2] - blastCoords[2] * forceImpulseOnLink[1], 
+                                                    blastCoords[2] * forceImpulseOnLink[0] - blastCoords[0] * forceImpulseOnLink[2], 
+                                                    blastCoords[0] * forceImpulseOnLink[1] - blastCoords[1] * forceImpulseOnLink[0]};
+                    double momentImpulseNms = 4.8894 * std::pow(r, -0.0262) * 4.8894 * weight_TNT_kg + 5.4295;
+                    ignition::math::Vector3d momentImpulseOnLink = momentImpulseNms * momentDir; 
+                    // convert the impulses into ~100ms long step functions (TODO: MODEL NEEDS TO BE IMPROVED)
+                    ignition::math::Vector3d torqueOnLink = momentImpulseOnLink / 0.1;
                     double torqueStrength = torqueOnLink.Length();
                     if (torqueStrength > blast_force_torque_max) {
                         torqueOnLink *= blast_force_torque_max / torqueStrength;
