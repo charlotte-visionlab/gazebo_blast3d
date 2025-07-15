@@ -20,9 +20,6 @@
 #include <Winsock2.h>
 #endif
 
-#include <ros/ros.h>
-#include <sensor_msgs/Image.h>
-#include <cv_bridge/cv_bridge.h>
 #include "gazebo/sensors/DepthCameraSensor.hh"
 #include "gazebo_blast3d_camera_plugin.h"
 #include "Event.pb.h"
@@ -32,10 +29,6 @@
 #include <string>
 #include <iostream>
 #include <boost/algorithm/string.hpp>
-
-#include "gazebo_blast3d/Event.h"
-#include "gazebo_blast3d/EventArray.h"
-#include "gazebo_blast3d/BlastBox2D.h" 
 
 using namespace std;
 
@@ -145,47 +138,6 @@ void GazeboBlast3DCameraPlugin::Load(sensors::SensorPtr _sensor, sdf::ElementPtr
     node_handle_ = transport::NodePtr(new transport::Node());
     node_handle_->Init(namespace_);
     
-    // Initialize ROS node handle
-    if (!ros::isInitialized()) {
-        int argc = 0;
-        char **argv = NULL;
-        ros::init(argc, argv, "gazebo_client", ros::init_options::NoSigintHandler);
-    }
-    rosNode.reset(new ros::NodeHandle("gazebo_blast3d_camera"));
-    gt_box_pub_ = rosNode->advertise<gazebo_blast3d::BlastBox2D>("/ground_truth_box", 1);
-
-    nh_ = ros::NodeHandle();
-    event_array_pub_ = nh_.advertise<gazebo_blast3d::EventArray>("event_topic", 1);
-//    this->rosNode.reset(new ros::NodeHandle("gazebo_client"));
-//    eventCamera_pub_ = this->rosNode->advertise<gazebo_blast3d::EventArray>("event_topic", 1);
-//    
-//    // Setup image publisher
-//    image_transport::ImageTransport it(*this->rosNode);
-//    this->image_pub = it.advertise("camera/image", 1);
-//    
-//    if (this->rosNode) {
-//    try {
-//        // You need to ensure that input_image is correctly defined and converted before this point
-//        cv_bridge::CvImage cv_image;
-//        cv_image.header.stamp = ros::Time::now();
-//        cv_image.header.frame_id = "camera_frame";
-//        cv_image.encoding = sensor_msgs::image_encodings::RGB8;
-//        cv_image.image = input_image;
-//        
-//        cv::imshow("Debug Image", input_image);
-//        cv::waitKey(1); // Just wait for a short moment to render the image
-//
-//        ROS_INFO("Advertising topic %s", this->image_pub.getTopic().c_str());
-//
-//        sensor_msgs::Image ros_image;
-//        cv_image.toImageMsg(ros_image);
-//        this->image_pub.publish(ros_image);
-//    } catch (const std::exception& e) {
-//        ROS_ERROR("Exception thrown while trying to publish image data: %s", e.what());
-//        }
-//    }
-
-       
     // topic publishing rates
     double pub_rate;
     getSdfParam<double>(_sdf, "publishRate", pub_rate, pub_rate);
@@ -346,58 +298,6 @@ void GazeboBlast3DCameraPlugin::OnNewFrameOpticalFlow(const unsigned char * _ima
 
 void GazeboBlast3DCameraPlugin::OnNewFrameCamera(const unsigned char * _image) {
     
-//    if (!this->rosNode || !this->image_pub) {
-//        ROS_WARN("ROS node or publisher not initialized.");
-//        return;
-//    }
-//
-//    try {
-//        // Construct cv::Mat from raw image data
-//        cv::Mat input_image(this->height, this->width, CV_8UC3, const_cast<unsigned char*>(_image));
-//
-//        // Convert the OpenCV image to a ROS image message
-//        cv_bridge::CvImage cv_image;
-//        cv_image.header.stamp = ros::Time::now();
-//        cv_image.header.frame_id = "camera_frame";
-//        cv_image.encoding = sensor_msgs::image_encodings::RGB8;
-//        cv_image.image = input_image;
-//
-//        sensor_msgs::Image ros_image;
-//        cv_image.toImageMsg(ros_image);
-//        this->image_pub.publish(ros_image);
-//    } catch (const cv_bridge::Exception& e) {
-//        ROS_ERROR("cv_bridge exception: %s", e.what());
-//    }
-
-    
-//    cv::Mat input_image(this->height, this->width, CV_8UC3, const_cast<unsigned char*>(_image)); // Construct cv::Mat from raw image data
-//    
-//    if (!this->has_last_image) {
-//        this->last_image = input_image.clone();
-//        this->has_last_image = true;
-//    }
-//    
-//    // Check if ROS node and publisher are initialized correctly
-//    if (this->rosNode && this->image_pub) {
-//        try {
-//            // Convert the OpenCV image to a ROS image message
-//            cv_bridge::CvImage cv_image;
-//            cv_image.header.stamp = ros::Time::now(); // Set current time as timestamp
-//            cv_image.header.frame_id = "camera_link"; // Change to your camera frame ID
-//            cv_image.encoding = sensor_msgs::image_encodings::RGB8; // Set encoding appropriately
-//            cv_image.image = input_image; // Assign the captured frame from Gazebo camera
-//
-//            sensor_msgs::Image ros_image;
-//            cv_image.toImageMsg(ros_image); // Convert to ROS image message
-//
-//            image_pub.publish(ros_image); // Publish the image
-//        } catch (const cv_bridge::Exception& e) {
-//            ROS_ERROR("cv_bridge exception: %s", e.what());
-//        }
-//    } else {
-//        ROS_WARN("ROS node or publisher not initialized.");
-//    }
-    
     input_image.create(this->height, this->width, CV_8UC3);
     // convert given frame to opencv image
     input_image.data = (uchar*) _image;
@@ -427,16 +327,14 @@ void GazeboBlast3DCameraPlugin::OnNewFrameCamera(const unsigned char * _image) {
     _image = this->camera->GetImageData(0);
 #endif
     
-    double current_time_double = now.Double();   
-    double nowSec = now.Double();
-
+    double current_time_double = now.Double();    
     if ((now - last_time_).Double() < pub_interval_ || pub_interval_ == 0.0) {
         // update most recent background image for future event calculation even when not publishing the data
         this->last_image = input_image.clone();     
         return;
     }
     last_time_ = now;
-
+    
 //    gzdbg << "blastMsgList size = " << blastMsgList.size() << std::endl;
     std::vector<blast3d_msgs::msgs::Blast3d>::iterator msg_iter;
     for (msg_iter = blastMsgList.begin(); msg_iter != blastMsgList.end(); ++msg_iter) {
@@ -470,49 +368,6 @@ void GazeboBlast3DCameraPlugin::OnNewFrameCamera(const unsigned char * _image) {
         gzwarn << "Not a valid camera mode.";
     }
     this->last_image = input_image.clone();  // update most recent background image for future event calculation
-//    
-//    // Convert OpenCV Mat to ROS Image message
-//    cv_bridge::CvImage cv_image;
-//    cv_image.header.stamp = ros::Time::now();
-//    cv_image.header.frame_id = "camera";
-//    cv_image.encoding = sensor_msgs::image_encodings::TYPE_8UC3; // Adjust encoding based on your camera output
-//    cv_image.image = input_image; // assuming input_image is your final cv::Mat image
-//
-//    sensor_msgs::Image ros_image;
-//    cv_image.toImageMsg(ros_image);
-//    image_pub.publish(ros_image);
-    
-    // For each stored blast in cameraBlasts_, see if it’s active
-    for (auto &blast : this->cameraBlasts_)
-    {
-        if (nowSec >= blast.start_time && nowSec <= blast.end_time)
-        {
-            double umin, vmin, umax, vmax;
-            bool ok = this->ProjectBlastToImage(blast, umin, vmin, umax, vmax);
-            if (ok)
-            {
-                // If you want to publish here:
-                gazebo_blast3d::BlastBox2D boxMsg;
-                boxMsg.header.stamp = ros::Time::now();
-                boxMsg.header.frame_id = "camera_optical_frame";
-                boxMsg.u_min = umin;
-                boxMsg.v_min = vmin;
-                boxMsg.u_max = umax;
-                boxMsg.v_max = vmax;
-                gt_box_pub_.publish(boxMsg);
-                // Store in a cv::Rect for easy drawing
-                boundingBox2D_ = cv::Rect(
-                    cv::Point(umin, vmin),
-                    cv::Point(umax, vmax)
-                );
-                hasBox_ = true;
-            }
-            else
-            {
-                hasBox_ = false;
-            }
-        }
-    }
 }
 
 void GazeboBlast3DCameraPlugin::blendEventOutput(double roll){
@@ -558,26 +413,6 @@ void GazeboBlast3DCameraPlugin::blendEventOutput(double roll){
     }
     
     PublishEventMessage(events);
-    PublishEventArray(events);
-  
-    cv::Mat eventVis(pos_mask_.size(), CV_8UC3, cv::Scalar(0, 0, 0));
-    std::vector<cv::Mat> channels(3);
-    cv::split(eventVis, channels);
-    channels[0] = neg_mask_ * 255;  // Blue channel
-    channels[2] = pos_mask_ * 255;  // Red channel
-    cv::merge(channels, eventVis);
-
-    // ------------------------------------
-    // DRAW THE BOUNDING BOX IF WE HAVE ONE
-    // ------------------------------------
-    if (hasBox_) {
-        cv::rectangle(eventVis, boundingBox2D_, cv::Scalar(0,255,0), 2);
-    }
-
-    // Show the final image
-    cv::imshow("event image", eventVis);
-    cv::waitKey(1);
-
 }
 
 /////////////////////////////////////////////////
@@ -601,24 +436,6 @@ void GazeboBlast3DCameraPlugin::PublishEventMessage(std::vector<sensor_msgs::msg
         eventCameraEventArray_message.mutable_events()->AddAllocated(new sensor_msgs::msgs::Event(event_msg));
     }
     eventCamera_pub_->Publish(eventCameraEventArray_message);
-}
-
-void GazeboBlast3DCameraPlugin::PublishEventArray(const std::vector<sensor_msgs::msgs::Event>& sensor_events) {
-    gazebo_blast3d::EventArray event_array_msg;
-    event_array_msg.header.stamp = ros::Time::now();  // Set current time
-    event_array_msg.header.frame_id = "event_camera_frame";  // Set the frame ID if needed
-
-    for (const auto& sensor_event : sensor_events) {
-        gazebo_blast3d::Event ros_event_msg;
-        ros_event_msg.x = sensor_event.x();
-        ros_event_msg.y = sensor_event.y();
-        ros_event_msg.polarity = sensor_event.polarity();
-        ros_event_msg.ts = ros::Time(sensor_event.time());  // Assuming ts is in seconds, adjust if it's in another unit
-
-        event_array_msg.events.push_back(ros_event_msg);
-    }
-
-    event_array_pub_.publish(event_array_msg);  // Use the publisher to send the message
 }
 
 /////////////////////////////////////////////////
@@ -674,7 +491,7 @@ void GazeboBlast3DCameraPlugin::PublishRGBMessage(cv::Mat image) {
 
     // For debug
     cv::imshow("blended RGB image", image);
-    cv::waitKey(1);
+    cv::waitKey(30);
 }
 
 /////////////////////////////////////////////////
@@ -691,21 +508,13 @@ void GazeboBlast3DCameraPlugin::processDelta(cv::Mat &last_image, cv::Mat &curr_
 
         cv::Mat pos_mask;
         cv::Mat neg_mask;
-                // store them in the plugin’s members
-        
+
         cv::threshold(pos_diff, pos_mask, event_threshold, 255, cv::THRESH_BINARY);
         cv::threshold(neg_diff, neg_mask, event_threshold, 255, cv::THRESH_BINARY);
-        
-        this->pos_mask_ = pos_mask.clone();
-        this->neg_mask_ = neg_mask.clone();
-        
-//        gzdbg << "Positive mask non-zero count: " << cv::countNonZero(pos_mask) << std::endl;
-//        gzdbg << "Negative mask non-zero count: " << cv::countNonZero(neg_mask) << std::endl;
-
 
         last_image += pos_mask & pos_diff;
         last_image -= neg_mask & neg_diff;
-
+        
         // blast image
         if (explosion) {
             cv::Mat blast_pos_diff = curr_blast_image - last_blast_image;
@@ -716,10 +525,6 @@ void GazeboBlast3DCameraPlugin::processDelta(cv::Mat &last_image, cv::Mat &curr_
 
             cv::threshold(blast_pos_diff, blast_pos_mask, event_threshold, 255, cv::THRESH_BINARY);
             cv::threshold(blast_neg_diff, blast_neg_mask, event_threshold, 255, cv::THRESH_BINARY);
-            
-            
-//            gzdbg << "Blast positive mask non-zero count: " << cv::countNonZero(blast_pos_mask) << std::endl;
-//            gzdbg << "Blast negative mask non-zero count: " << cv::countNonZero(blast_neg_mask) << std::endl;
             
             // TODO: requires double-check
             last_blast_image += blast_pos_mask & blast_pos_diff;
@@ -753,11 +558,9 @@ void GazeboBlast3DCameraPlugin::processDelta(cv::Mat &last_image, cv::Mat &curr_
         // modify channel// then merge
         cv::merge(channels, eventVis);
         cv::imshow("event image", eventVis);
-        cv::waitKey(1);
-    } 
-    else 
-    {
-//        gzwarn << "Unexpected change in image size (" << last_image.size() << " -> " << curr_image.size() << "). Publishing no events for this frame change." << endl;
+        cv::waitKey(30);
+    } else {
+        gzwarn << "Unexpected change in image size (" << last_image.size() << " -> " << curr_image.size() << "). Publishing no events for this frame change." << endl;
     }
 }
 
@@ -824,21 +627,6 @@ void GazeboBlast3DCameraPlugin::Blast3DCallback(Blast3dMsgPtr & blast3d_msg) {
     msg_copy.set_time(blast3d_msg->time());
     //blastMsgQueue.push_back(*blast3d_msg);
     blastMsgList.push_back(msg_copy);
-    
-    //store bounding-box data in cameraBlasts_:
-    double start_t = blast3d_msg->time();
-    double end_t   = start_t + 1.0;  // e.g. 1 second duration
-    double halfSz  = 1.0;           // half-size of bounding box (meters)
-
-    BlastData2D data;
-    data.start_time  = start_t;
-    data.end_time    = end_t;
-    data.center      = ignition::math::Vector3d(blast3d_msg->x(),
-                                                blast3d_msg->y(),
-                                                blast3d_msg->z());
-    data.box_half_size = halfSz;
-
-    cameraBlasts_.push_back(data);
 }
 
 /////////////////////////////////////////////////
@@ -865,66 +653,4 @@ void GazeboBlast3DCameraPlugin::CreatePubsAndSubs() {
             blast3d_server_reglink_topic_ << "." << std::endl;
 
 }
-bool GazeboBlast3DCameraPlugin::ProjectBlastToImage(const BlastData2D &blast,
-                                                    double &umin, double &vmin,
-                                                    double &umax, double &vmax) {
-    // 1) get camera pose, e.g.
-    ignition::math::Pose3d camPose = this->camera->WorldPose();
-    ignition::math::Quaterniond R_world2cam = camPose.Rot().Inverse();
-    ignition::math::Vector3d    t_world2cam = -(R_world2cam * camPose.Pos());
-
-    double fx = this->focal_length_;
-    double fy = this->focal_length_;
-    double cx = double(this->width)/2.0;
-    double cy = double(this->height)/2.0;
-
-    // 2) 8 corners
-    std::vector<ignition::math::Vector3d> corners;
-    for (int dx=-1; dx<=1; dx+=2)
-     for (int dy=-1; dy<=1; dy+=2)
-      for (int dz=-1; dz<=1; dz+=2)
-      {
-        corners.push_back(
-          ignition::math::Vector3d(
-            blast.center.X() + dx*blast.box_half_size,
-            blast.center.Y() + dy*blast.box_half_size,
-            blast.center.Z() + dz*blast.box_half_size
-          )
-        );
-      }
-
-    umin = vmin =  999999.0;
-    umax = vmax = -999999.0;
-    bool anyValid = false;
-
-    for (auto &Cw : corners)
-    {
-        // transform world->cam
-        ignition::math::Vector3d Cc = R_world2cam * Cw + t_world2cam;
-        double Xc = Cc.X(), Yc = Cc.Y(), Zc = Cc.Z();
-        if (Zc <= 0) continue;
-
-        double u = fx*(Xc / Zc) + cx;
-        double v = -fy*(Yc / Zc) + cy;
-        if (u < umin) umin = u;
-        if (v < vmin) vmin = v;
-        if (u > umax) umax = u;
-        if (v > vmax) vmax = v;
-        anyValid = true;
-    }
-
-    if (!anyValid) return false;
-
-    // clamp
-    if (umin < 0) umin = 0;
-    if (vmin < 0) vmin = 0;
-    if (umax > this->width -1)  umax = this->width -1;
-    if (vmax > this->height-1) vmax = this->height-1;
-
-    if (umin >= umax || vmin >= vmax)
-        return false;
-    return true;
-}
-
-
-/* vim: set et fenc=utf-8 ff=unix sts=0 sw=2 ts=2 : */ 
+/* vim: set et fenc=utf-8 ff=unix sts=0 sw=2 ts=2 : */
