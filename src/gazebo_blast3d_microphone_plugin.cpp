@@ -24,6 +24,11 @@
 #include <boost/algorithm/string.hpp>
 #include <vector>
 #include <chrono>
+#include <ros/ros.h>
+
+#include "sync_utils.h"
+
+//#include "gazebo_blast3d/BlastSync.h"
 
 using namespace std;
 
@@ -62,6 +67,14 @@ namespace gazebo {
         // Store the pointer to the model and the world.
         model_ = _model;
         world_ = model_->GetWorld();
+        nh_ = ros::NodeHandle("~blast3d_mic");
+        sync_pub_ = nh_.advertise<gazebo_blast3d::BlastSync>("blast_sync_log",50,false);
+        
+        audio_ros_pub_ = nh_.advertise<std_msgs::Float32MultiArray>("blast_audio", 1);
+        vehicle_id_ = _sdf->HasElement("vehicleName") ? _sdf->Get<std::string>("vehicleName") : model_->GetName();
+        std::unordered_map<double,uint32_t> event_id_map_;
+        uint32_t last_eid_ = 0;
+
 
         //==============================================//
         //========== READ IN PARAMS FROM SDF ===========//
@@ -195,6 +208,8 @@ namespace gazebo {
 
     void GazeboBlast3DMicrophonePlugin::OnUpdate(const common::UpdateInfo& _info) {
         
+        plotEverySteps++;
+        
 #if GAZEBO_MAJOR_VERSION >= 9
         common::Time now = world_->SimTime();
 #else
@@ -210,17 +225,36 @@ namespace gazebo {
             return;
         }
         last_time_ = now;
-        
+      
 //         Packetize the audio file
         size_t packetSize = std::floor(pub_interval_ * this->pubSampleRate);
         size_t numSamples = output_buffer_pub[0].size(); // Assuming samples[0] contains the audio data for one channel
         size_t packetEnd = std::min(packetSize, numSamples);
         std::vector<float> packet(output_buffer_pub[0].begin(), output_buffer_pub[0].begin() + packetEnd);
         PublishAudioMessage(packet);
+        double sim_t = world_->SimTime().Double();
+        if (last_eid_ != 0)
+            blast3d_sync::publishSyncLog(sync_pub_, "acoustic", last_eid_, now.Double(), vehicle_id_);
+
+
+
         output_buffer_pub[0].erase(output_buffer_pub[0].begin(), output_buffer_pub[0].begin() + packetEnd);
         if (output_buffer_pub[0].size() < this->pubBufSize) {
             std::copy(background_audio_.samples[0].begin(), background_audio_.samples[0].begin() + packetEnd,
                     std::back_inserter(output_buffer_pub[0]));
+        }
+        
+        if (plotEverySteps % 100 == 0) {
+        
+            AudioFile<float> a;
+            a.setNumChannels (1);
+            a.setNumSamplesPerChannel (packet.size());
+            a.setBitDepth (this->pubBitDepth);
+            a.samples[0] = packet;
+
+            std::string filename = "audioPacket.wav";
+            std::string filePath = blast3d_audio_datafolder_ + "/../" + filename; 
+            a.save(filePath, AudioFileFormat::Wave);
         }
     }
 
@@ -242,7 +276,18 @@ namespace gazebo {
         audio_message.set_bitspersample(this->pubBitDepth);
 
         audio_pub_->Publish(audio_message);
+        
+        // --- ROS mirror without creating a new msg type ---
+        std_msgs::Float32MultiArray ros_msg;
+        ros_msg.layout.dim.resize(1);
+        ros_msg.layout.dim[0].label = "samples";
+        ros_msg.layout.dim[0].size  = sampleData.size();
+        ros_msg.layout.dim[0].stride= sampleData.size();
+        ros_msg.layout.data_offset  = 0;
+        ros_msg.data = sampleData;   // copies floats
+        audio_ros_pub_.publish(ros_msg);
 
+        
         // For Debugging, by saving a newly generated audio file with gain:
 //        AudioFile<float> a;
 //        a.setNumChannels (1);
@@ -292,6 +337,10 @@ namespace gazebo {
 
         float backgroundAudioSampleRate = background_audio_.getSampleRate();
         
+        uint32_t eid = blast3d_sync::nextEventId();
+        event_id_map_[blast3d_msg->time()] = eid;
+        last_eid_ = eid;
+        
         // Apply sound attenuation based on the distance
         // https://en.wikipedia.org/wiki/Stokes%27s_law_of_sound_attenuation
 //        gzdbg << "airAttenuationCoeff = " << airAttenuationCoeff << std::endl;
@@ -339,7 +388,7 @@ namespace gazebo {
         else {
             gzdbg << "Air blast audio is too far to be heard due to attenuation." << std::endl;
         }
-
+        
         // For debug
 //        int len = this->pubSampleRate * 15;
 //        std::vector<float> packet(output_buffer_pub[0].begin(), output_buffer_pub[0].begin() + len);

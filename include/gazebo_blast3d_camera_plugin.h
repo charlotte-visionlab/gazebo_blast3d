@@ -19,8 +19,14 @@
 
 #include <string>
 
+//#include "matplotlib-cpp/matplotlibcpp.h"
+//#include <chrono>
+//#include <thread>
+#include <vector>
 #include "gazebo/common/Plugin.hh"
 #include "gazebo/sensors/ImuSensor.hh"
+#include <ros/ros.h>
+#include <std_msgs/Bool.h>
 #include "gazebo/sensors/CameraSensor.hh"
 #include "gazebo/gazebo.hh"
 #include "gazebo/common/common.hh"
@@ -39,6 +45,14 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
 #include <ignition/math.hh>
+#include <ros/ros.h>
+#include <image_transport/image_transport.h>
+
+#include "gazebo_blast3d/Event.h"
+#include "gazebo_blast3d/EventArray.h"
+#include "gazebo_blast3d/BlastBox2D.h"
+#include "gazebo_blast3d/BlastSync.h"
+#include <unordered_map>
 
 //#include "flow_opencv.hpp"
 //#include "flow_px4.hpp"
@@ -150,6 +164,20 @@ namespace gazebo
     static const std::string kDefaultLinkName = "base_link";
 
     typedef const boost::shared_ptr<const blast3d_msgs::msgs::Blast3d>& Blast3dMsgPtr;
+    
+    // Define a simple struct for Events
+    struct Event {
+        int x, y;        // Position of the event
+        double ts;       // Timestamp of the event
+        int polarity;    // Polarity of the event
+    };
+    
+    struct BlastData2D {
+    double start_time;               // When the blast begins
+    double end_time;                 // When the blast ends
+    ignition::math::Vector3d center; // The blast center in world coords
+    double box_half_size;            // Half-size for 3D bounding box
+    };
 
   class GAZEBO_VISIBLE GazeboBlast3DCameraPlugin : public SensorPlugin
   {
@@ -172,12 +200,30 @@ namespace gazebo
         virtual void blendRGBOutput();
         virtual void PublishEventMessage(std::vector<sensor_msgs::msgs::Event> events);
         virtual void PublishRGBMessage(cv::Mat image);
+        bool detectBlast(const cv::Mat& last_blast_image, cv::Mat& current_blast_image);
+        void PublishEventArray(const std::vector<sensor_msgs::msgs::Event>& sensor_events);
+
+        void PublishBlastEvent(const cv::Rect& event_region);
+        bool shouldDetectBlast(const cv::Mat& frame);
+        
+         // methods for detector processing
+        void compareFrames(const cv::Mat& curr_image);
+        void fillEventsFromMasks(std::vector<sensor_msgs::msgs::Event> &events);
+        void processEvents();
+        bool detectVerticalExpansion(const std::vector<Event>& events);
+        bool detectHorizontalSpread(const std::vector<Event>& events);
+        void publishBlastDetected();
+        
 
     protected:
         unsigned int width, height, depth;
         std::string format;
         sensors::CameraSensorPtr parentSensor;
         rendering::CameraPtr camera;
+//        ros::NodeHandle nh;
+//        ros::Publisher event_array_pub;
+//        ros::Publisher event_publisher;
+        std::vector<Event> eventBuffer;
 
     private:
         /// \brief    Flag that is set to true once CreatePubsAndSubs() is called, used
@@ -194,12 +240,15 @@ namespace gazebo
         
         /// \brief    Pointer to the update event connection.
         event::ConnectionPtr newFrameConnection;
-        
+                
         std::vector<blast3d_msgs::msgs::Blast3d> blastMsgList;
 
         /// \brief    Frame ID for Blast3d messages.
         std::string frame_id_;
         std::string link_name_;
+        
+        std::unique_ptr<ros::NodeHandle> rosNode;  // Use smart pointer for automatic management
+        image_transport::Publisher image_pub;
 
         /// \brief    Pointer to the sensor
         sensors::SensorPtr sensor_;
@@ -256,6 +305,32 @@ namespace gazebo
         uint32_t frame_time_us_;
         bool has_gyro_;
         bool explosion_triggered_; // Flag to indicate whether the explosion has been triggered.
+        ros::NodeHandle nh_;
+        ros::Publisher event_array_pub_;
+        std::vector<BlastData2D> cameraBlasts_;
+        bool ProjectBlastToImage(const BlastData2D &blast,
+                         double &u_min, double &v_min,
+                         double &u_max, double &v_max);
+        ros::Publisher gt_box_pub_;
+        cv::Rect boundingBox2D_; 
+        bool hasBox_ = false;
+        cv::Mat pos_mask_;
+        cv::Mat neg_mask_;
+        bool logged_first_frame_ = false;
+        int  current_blast_id_   = -1;
+        std::string vehicle_id_;
+        
+        // --- Sync logging ---
+        ros::Publisher sync_pub_;
+        uint32_t next_event_id_ = 0;
+        std::unordered_map<double,uint32_t> event_id_map_; // key: blast time
+        int current_event_id_ = -1;
+        
+        // optional: cache standoff distance if you compute it
+        double last_standoff_dist_ = 0.0;
+        
+        void PublishSyncLog(const std::string& source, uint32_t event_id, double sim_time, double standoff=0.0);
+
   };
 }
 #endif /* GAZEBO_BLAST3D_CAMERA_PLUGIN_H */

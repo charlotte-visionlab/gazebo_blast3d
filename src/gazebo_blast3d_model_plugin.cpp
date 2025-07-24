@@ -15,6 +15,7 @@
  */
 
 #include "gazebo_blast3d_model_plugin.h"
+#include "sync_utils.h"
 
 namespace gazebo {
 
@@ -47,6 +48,9 @@ namespace gazebo {
 
         // Initialize with default namespace (typically /gazebo/default/).
         node_handle_->Init(namespace_);
+        nh_ = ros::NodeHandle("~blast3d_sync");     // any namespace you like
+        sync_pub_ = nh_.advertise<gazebo_blast3d::BlastSync>("blast_sync_log", 50, false);
+
 
         if (_sdf->HasElement("linkName"))
             link_name_ = _sdf->GetElement("linkName")->Get<std::string>();
@@ -73,10 +77,21 @@ namespace gazebo {
         // iteration.
         updateConnection_ = event::Events::ConnectWorldUpdateBegin(
                 boost::bind(&GazeboBlast3DModelPlugin::OnUpdate, this, _1));
+        
+//        matplotlibcpp::show();
+        blastDataFile.open("/home.md2/sparab2/wind/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/blast_force_torque.csv");
+        if (!blastDataFile.is_open()) {
+            gzerr << "Failed to open file for writing." << std::endl;
+        }
+        blastDataFile << "time stamp" << "," << "force (N)" << "," << "torque (N*m)" << '\n';
 
     }
 
     void GazeboBlast3DModelPlugin::OnUpdate(const common::UpdateInfo& _info) {
+        
+        plotEverySteps++;
+        bool plot = false;
+        
         if (kPrintOnUpdates) {
             gzdbg << __FUNCTION__ << "() called." << std::endl;
         }
@@ -127,7 +142,7 @@ namespace gazebo {
                     double momentImpulseNms = 4.8894 * std::pow(r, -0.0262) * 4.8894 * weight_TNT_kg + 5.4295;
                     ignition::math::Vector3d momentImpulseOnLink = momentImpulseNms * momentDir; 
                     // convert the impulses into ~100ms long step functions (TODO: MODEL NEEDS TO BE IMPROVED)
-                    ignition::math::Vector3d torqueOnLink = momentImpulseOnLink / 0.1;
+                    ignition::math::Vector3d torqueOnLink = momentImpulseOnLink / 0.001;
                     double torqueStrength = torqueOnLink.Length();
                     if (torqueStrength > blast_force_torque_max) {
                         torqueOnLink *= blast_force_torque_max / torqueStrength;
@@ -144,11 +159,34 @@ namespace gazebo {
                             msg_iter->time() << "." << std::endl;
                     // mark for deletion
                     msg_iter->set_time(-1.0);
+                    
+                    auto it = event_id_map_.find(msg_iter->time());
+                    uint32_t eid = (it != event_id_map_.end()) ? it->second : blast3d_sync::nextEventId();
+
+                    double sim_t = world_->SimTime().Double();
+                    blast3d_sync::publishSyncLog(sync_pub_, "pressure", eid, sim_t, model_->GetName());
+                    last_eid_ = eid;
+
+                    
+                    // current_time_double vs. forceStrength
+//                    timeStampVec.push_back(current_time_double);
+//                    forceVec.push_back(forceStrength); 
+//                    torqueVec.push_back(torqueStrength);
+                    
+                    blastDataFile << current_time_double << "," << forceStrength << "," << torqueStrength << "\n";
+                    plot = true;
                 }
             } else {
                 //gzdbg << __FUNCTION__ << "() this blast will occur " <<
                 //        msg_iter->time() - current_time_double << " seconds from now." << std::endl;
             }
+        }
+        
+        if (!plot){
+//                timeStampVec.push_back(current_time_double);
+//                forceVec.push_back(0);         
+//                torqueVec.push_back(0);  
+            blastDataFile << current_time_double << "," << 0 << "," << 0 << "\n";
         }
         
         // delete those messages marked to occur at time == -1.0
@@ -157,6 +195,40 @@ namespace gazebo {
                 [](const blast3d_msgs::msgs::Blast3d & msg) {
                     return msg.time() == -1.0; }),
         blastMsgList.end());
+                    
+//        if (plotEverySteps % 100 == 0) {
+//            matplotlibcpp::figure(1);
+//            matplotlibcpp::clf(); // Clear the current figure
+//            matplotlibcpp::plot(timeStampVec, forceVec);
+//            matplotlibcpp::xlabel("Time (s)");
+//            matplotlibcpp::ylabel("Force (N)");
+//            matplotlibcpp::title("Blast force over Time");
+//            
+//            matplotlibcpp::figure(2);
+//            matplotlibcpp::clf(); // Clear the current figure
+//            matplotlibcpp::plot(timeStampVec, torqueVec);
+//            matplotlibcpp::xlabel("Time (s)");
+//            matplotlibcpp::ylabel("Torque (N*m)");
+//            matplotlibcpp::title("Blast torque over Time");
+//            
+//            // Optionally clear the data after plotting
+//            timeStampVec.erase(timeStampVec.begin(), timeStampVec.begin() + 60);
+//            forceVec.erase(forceVec.begin(), forceVec.begin() + 60);
+//            torqueVec.erase(torqueVec.begin(), torqueVec.begin() + 60);
+            
+//            matplotlibcpp::figure(3);
+//            AudioFile<float> saveAudio;
+//            saveAudio.load("/home.md2/sparab2/wind/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/test.wav");
+//            matplotlibcpp::clf(); // Clear the current figure
+//            matplotlibcpp::plot(saveAudio.samples[0]);
+//            matplotlibcpp::xlabel("Sample Index");
+//            matplotlibcpp::ylabel("Audio Magnitude");
+//            matplotlibcpp::title("Published Blast Audio");
+//            matplotlibcpp::ylim(-2.0, 2.0);
+            
+//            matplotlibcpp::pause(0.1); // Display plot for 0.1 seconds
+//            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+//        }
     }
 
     void GazeboBlast3DModelPlugin::Blast3DCallback(Blast3dMsgPtr & blast3d_msg) {
@@ -170,6 +242,10 @@ namespace gazebo {
         msg_copy.set_weight_tnt_kg(blast3d_msg->weight_tnt_kg());
         msg_copy.set_time(blast3d_msg->time());
         //blastMsgQueue.push_back(*blast3d_msg);
+        
+        uint32_t eid = blast3d_sync::nextEventId();
+        event_id_map_[msg_copy.time()] = eid;
+        last_eid_ = eid;
         blastMsgList.push_back(msg_copy);
     }
 
@@ -191,6 +267,14 @@ namespace gazebo {
         register_msg.set_namespace_(namespace_);
         register_msg.set_link_wind_topic(blast3d_server_link_topic_);
         blast3d_server_register_pub_->Publish(register_msg);
+//        uint32_t eid = blast3d_sync::nextEventId();
+//        blast3d_sync::publishSyncLog(sync_pub_, "pressure", eid, current_time_double, model_->GetName());
+
+
+//        publishSyncLog(sync_pub_, "pressure",
+//                       current_event_id_, world_->SimTime().Double(),
+//                       vehicle_id_, 0.0);
+
         gzdbg << __FUNCTION__ << "() model plugin registering to world blast plugin server on topic " <<
                 blast3d_server_reglink_topic_ << "." << std::endl;
 

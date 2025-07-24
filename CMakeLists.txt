@@ -3,7 +3,8 @@ cmake_policy(SET CMP0042 NEW)
 cmake_policy(SET CMP0048 NEW)
 cmake_policy(SET CMP0054 NEW)
 
-set(PX4_GAZEBO_CLASSIC_SITL_ROOT /home2/arwillis/uncc_wind_control/third_party/PX4-Autopilot/Tools/simulation/gazebo-classic/sitl_gazebo-classic)
+#set(PX4_GAZEBO_CLASSIC_SITL_ROOT /home2/arwillis/uncc_wind_control/third_party/PX4-Autopilot/Tools/simulation/gazebo-classic/sitl_gazebo-classic)
+set(PX4_GAZEBO_CLASSIC_SITL_ROOT /home.md2/sparab2/wind/uncc_wind_control/third_party/PX4-Autopilot/Tools/simulation/gazebo-classic/sitl_gazebo-classic)
 
 if (NOT CMAKE_INSTALL_PREFIX)
   set(CMAKE_INSTALL_PREFIX "/usr" CACHE STRING "install prefix" FORCE)
@@ -71,15 +72,40 @@ if (BUILD_ROS2_PLUGINS)
   find_package(geometry_msgs REQUIRED)
   find_package(rclcpp REQUIRED)
   find_package(sensor_msgs REQUIRED)
+  find_package(roscpp REQUIRED)
+  find_package(std_msgs REQUIRED)
+
 endif()
 
 
 # see if catkin was invoked to build this
 if (CATKIN_DEVEL_PREFIX)
   message(STATUS "catkin ENABLED")
-  find_package(catkin REQUIRED)
+  find_package(catkin REQUIRED COMPONENTS
+    roscpp
+    std_msgs
+    message_generation
+    message_runtime
+)
+
+add_message_files(
+  FILES
+  BlastBox2D.msg
+  Event.msg
+  EventArray.msg
+  BlastSync.msg
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+)
   if (catkin_FOUND)
-    catkin_package()
+    catkin_package(
+      CATKIN_DEPENDS message_runtime std_msgs roscpp sensor_msgs geometry_msgs
+      DEPENDS EIGEN3 Boost
+      INCLUDE_DIRS include
+    )
   else()
     message(FATAL_ERROR "catkin not found")
   endif()
@@ -92,6 +118,9 @@ endif()
 # compiled headers from Gazebo directly
 # or to have something entirely independent.
 #
+
+
+
 set(PROTOBUF_IMPORT_DIRS "")
 foreach(ITR ${GAZEBO_INCLUDE_DIRS})
   if(ITR MATCHES ".*gazebo-[0-9.]+$")
@@ -143,6 +172,7 @@ endforeach()
 
 include_directories(
   include
+  ${catkin_INCLUDE_DIRS}
   ${Boost_INCLUDE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
   ${EIGEN3_INCLUDE_DIRS}
@@ -261,8 +291,18 @@ set(plugins
   gazebo_blast3d_world_plugin
   )
 
+
+find_package(PythonLibs REQUIRED)
+include_directories(${PYTHON_INCLUDE_DIRS})
+include_directories(${roscpp_INCLUDE_DIRS})
+include_directories(${std_msgs_INCLUDE_DIRS})
+
+
 foreach(plugin ${plugins})
-  target_link_libraries(${plugin} ${Boost_LIBRARIES} ${GAZEBO_LIBRARIES} ${TinyXML_LIBRARIES} blast3d_msgs)
+  target_link_libraries(${plugin} ${catkin_LIBRARIES} ${PYTHON_LIBRARIES} ${Boost_LIBRARIES} ${GAZEBO_LIBRARIES} ${TinyXML_LIBRARIES} blast3d_msgs)
+  target_link_libraries(gazebo_blast3d_camera_plugin ${roscpp_LIBRARIES})
+  target_link_libraries(gazebo_blast3d_camera_plugin ${std_msgs_LIBRARIES})
+
 endforeach()
 
 

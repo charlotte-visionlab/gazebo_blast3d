@@ -35,6 +35,10 @@
 #include "Blast3dServerRegistration.pb.h"
 
 #include "utils/common.h"
+#include <ros/ros.h>
+#include <ros/publisher.h>   // optional, ros/ros.h already pulls it
+
+//#include <fstream>
 
 namespace gazebo {
     // Constants and Default Values
@@ -103,6 +107,17 @@ namespace gazebo {
         std::vector<std::string> registered_client_blast3d_topic_list_;
 
         blast3d_msgs::msgs::Blast3d blast3d_message_;
+//        std::ofstream ground_truth_log;
+        #include <map>
+        uint32_t next_event_id_{1};
+        std::map<double, uint32_t> event_id_map_;
+//        std::unordered_map<double, uint32_t> event_id_map_;
+        uint32_t last_eid_ = 0;
+
+
+        ros::NodeHandle nh_;
+        ros::Publisher  sync_pub_;
+
     };
 }
 

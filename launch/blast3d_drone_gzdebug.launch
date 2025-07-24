@@ -2,8 +2,8 @@
 <launch>
     <!-- SET THIS VARIABLE TO YOUR ROOT FOLDER -->
     <!-- <arg name="PROJECT_IMAGE_ROOT"                    default="/home.md1/server/DEFENSEWERX/jzhang72/asr_project"/> -->
-    <arg name="PROJECT_IMAGE_ROOT"                default="/home2/arwillis/uncc_wind_control"/>
-    <!-- <arg name="PROJECT_IMAGE_ROOT"                default="/home.md2/sparab2/wind/uncc_wind_control"/> -->
+    <!--<arg name="PROJECT_IMAGE_ROOT"                default="/home2/arwillis/uncc_wind_control"/>-->
+     <arg name="PROJECT_IMAGE_ROOT"                default="/home.md2/sparab2/wind/uncc_wind_control"/> 
     
     <arg name="run_qgroundcontrol"                default="true"/>
     <arg name="run_rviz"                          default="true"/>
@@ -44,7 +44,7 @@
     <arg name="est" default="ekf2"/>
     <arg name="vehicle" default="iris"/>
     
-    <arg name="world_A" default="$(find mavlink_sitl_gazebo)/worlds/empty.world"/>
+    <arg name="world_A" default="$(find gazebo_px4_drone)/worlds/empty.world"/>
     <arg name="world_B" default="$(find gazebo_blast3d)/worlds/blast.world"/>
     <arg name="world_C" default="$(find gazebo_blast3d)/worlds/blast_test.world"/>
     <arg name="world" default="$(arg world_C)"/>
@@ -125,9 +125,11 @@
     <arg name="mission_A" default="MC_mission_box.plan"/>
     <arg name="mission_B" default="MC_mission_uncc.plan"/>
     <arg name="mission_C" default="MC_safe_landing.plan"/>
+    <arg name="mission_D" default="MC_mission_video1.plan"/>
+    <arg name="mission_E" default="MC_mission_icuas_exp2.plan"/>
     <!-- <node pkg="gazebo_px4_drone" name="mavros_autopilot" type="mavros_autopilot_01.py" output="screen"/> -->
     <node pkg="gazebo_px4_drone" name="mission_test" type="mission_test.py" output="screen" if="$(arg run_mission)">
-        <param name="mission_name"        value="$(arg mission_B)"/>
+        <param name="mission_name"        value="$(arg mission_E)"/>
     </node>
 
     <!-- MAVROS -->

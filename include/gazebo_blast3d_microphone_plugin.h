@@ -21,6 +21,15 @@
 #include "utils/AudioFile.h"
 #include "utils/common.h"
 
+#include "matplotlib-cpp/matplotlibcpp.h"
+#include <chrono>
+#include <thread>
+#include <vector>
+
+#include <ros/ros.h>
+#include <ros/publisher.h>   // optional, ros/ros.h already pulls it
+#include <std_msgs/Float32MultiArray.h> 
+
 using namespace std;
 
 namespace gazebo {
@@ -100,6 +109,7 @@ namespace gazebo {
         int pubBitDepth;
         float pubSampleRate;
         int pubBufSize;
+        int plotEverySteps = 0;
 
         std::vector<std::vector<float>> output_buffer_background, output_buffer_pub;
 
@@ -107,6 +117,18 @@ namespace gazebo {
         bool explosion_triggered_; // Flag to indicate whether the explosion has been triggered.
         
         double airAttenuationCoeff;
+        
+        ros::NodeHandle nh_;
+        ros::Publisher  sync_pub_;
+        std::string     vehicle_id_;
+        uint32_t        next_event_id_ = 0;   // world plugin only
+        int             current_event_id_ = -1; // model/mic if you need it
+        std::unordered_map<double, uint32_t> event_id_map_;
+        uint32_t last_eid_ = 0;
+        ros::Publisher audio_ros_pub_;
+
+
+
     };
 }
 #endif /* GAZEBO_BLAST3D_MICROPHONE_PLUGIN_H */

@@ -35,7 +35,9 @@
 
 #include "gazebo_blast3d/Event.h"
 #include "gazebo_blast3d/EventArray.h"
-#include "gazebo_blast3d/BlastBox2D.h" 
+#include "sync_utils.h"
+
+//#include "gazebo_blast3d/BlastBox2D.h" 
 
 using namespace std;
 
@@ -152,10 +154,17 @@ void GazeboBlast3DCameraPlugin::Load(sensors::SensorPtr _sensor, sdf::ElementPtr
         ros::init(argc, argv, "gazebo_client", ros::init_options::NoSigintHandler);
     }
     rosNode.reset(new ros::NodeHandle("gazebo_blast3d_camera"));
-    gt_box_pub_ = rosNode->advertise<gazebo_blast3d::BlastBox2D>("/ground_truth_box", 1);
+//    gt_box_pub_ = rosNode->advertise<gazebo_blast3d::BlastBox2D>("/ground_truth_box", 1);
 
     nh_ = ros::NodeHandle();
     event_array_pub_ = nh_.advertise<gazebo_blast3d::EventArray>("event_topic", 1);
+    
+    sync_pub_ = nh_.advertise<gazebo_blast3d::BlastSync>("blast_sync_log", 50, false);
+
+    // vehicle_id_ from SDF or fallback
+    vehicle_id_ = _sdf->HasElement("vehicleName") ?
+                  _sdf->Get<std::string>("vehicleName") : "iris";
+
 //    this->rosNode.reset(new ros::NodeHandle("gazebo_client"));
 //    eventCamera_pub_ = this->rosNode->advertise<gazebo_blast3d::EventArray>("event_topic", 1);
 //    
@@ -442,6 +451,8 @@ void GazeboBlast3DCameraPlugin::OnNewFrameCamera(const unsigned char * _image) {
     for (msg_iter = blastMsgList.begin(); msg_iter != blastMsgList.end(); ++msg_iter) {
         if (msg_iter->time() < current_time_double) {
             explosion_triggered_ = true;    // this trigger will be reset to false when a blast is finished
+            current_event_id_ = event_id_map_[msg_iter->time()];
+
             gzdbg << __FUNCTION__ << "() blending environment and blast data " 
                     << "from blast model plugin for blast at time " 
                     << msg_iter->time() << "." << std::endl;
@@ -482,37 +493,39 @@ void GazeboBlast3DCameraPlugin::OnNewFrameCamera(const unsigned char * _image) {
 //    cv_image.toImageMsg(ros_image);
 //    image_pub.publish(ros_image);
     
-    // For each stored blast in cameraBlasts_, see if it’s active
-    for (auto &blast : this->cameraBlasts_)
-    {
-        if (nowSec >= blast.start_time && nowSec <= blast.end_time)
-        {
-            double umin, vmin, umax, vmax;
-            bool ok = this->ProjectBlastToImage(blast, umin, vmin, umax, vmax);
-            if (ok)
-            {
-                // If you want to publish here:
-                gazebo_blast3d::BlastBox2D boxMsg;
-                boxMsg.header.stamp = ros::Time::now();
-                boxMsg.header.frame_id = "camera_optical_frame";
-                boxMsg.u_min = umin;
-                boxMsg.v_min = vmin;
-                boxMsg.u_max = umax;
-                boxMsg.v_max = vmax;
-                gt_box_pub_.publish(boxMsg);
-                // Store in a cv::Rect for easy drawing
-                boundingBox2D_ = cv::Rect(
-                    cv::Point(umin, vmin),
-                    cv::Point(umax, vmax)
-                );
-                hasBox_ = true;
-            }
-            else
-            {
-                hasBox_ = false;
-            }
-        }
-    }
+    // For each stored blast in cameraBlasts_, see if its active
+   
+    
+//    for (auto &blast : this->cameraBlasts_)
+//    {
+//        if (nowSec >= blast.start_time && nowSec <= blast.end_time)
+//        {
+//            double umin, vmin, umax, vmax;
+//            bool ok = this->ProjectBlastToImage(blast, umin, vmin, umax, vmax);
+//            if (ok)
+//            {
+//                // If you want to publish here:
+//                gazebo_blast3d::BlastBox2D boxMsg;
+//                boxMsg.header.stamp = ros::Time::now();
+//                boxMsg.header.frame_id = "camera_optical_frame";
+//                boxMsg.u_min = umin;
+//                boxMsg.v_min = vmin;
+//                boxMsg.u_max = umax;
+//                boxMsg.v_max = vmax;
+//                gt_box_pub_.publish(boxMsg);
+//                // Store in a cv::Rect for easy drawing
+//                boundingBox2D_ = cv::Rect(
+//                    cv::Point(umin, vmin),
+//                    cv::Point(umax, vmax)
+//                );
+//                hasBox_ = true;
+//            }
+//            else
+//            {
+//                hasBox_ = false;
+//            }
+//        }
+//    }
 }
 
 void GazeboBlast3DCameraPlugin::blendEventOutput(double roll){
@@ -559,6 +572,9 @@ void GazeboBlast3DCameraPlugin::blendEventOutput(double roll){
     
     PublishEventMessage(events);
     PublishEventArray(events);
+    double sim_t = world_->SimTime().Double();
+    uint32_t eid = blast3d_sync::nextEventId();
+    blast3d_sync::publishSyncLog(sync_pub_, "event_cam",eid, sim_t, vehicle_id_, last_standoff_dist_);
   
     cv::Mat eventVis(pos_mask_.size(), CV_8UC3, cv::Scalar(0, 0, 0));
     std::vector<cv::Mat> channels(3);
@@ -570,14 +586,15 @@ void GazeboBlast3DCameraPlugin::blendEventOutput(double roll){
     // ------------------------------------
     // DRAW THE BOUNDING BOX IF WE HAVE ONE
     // ------------------------------------
-    if (hasBox_) {
-        cv::rectangle(eventVis, boundingBox2D_, cv::Scalar(0,255,0), 2);
-    }
+//    if (hasBox_) {
+//        cv::rectangle(eventVis, boundingBox2D_, cv::Scalar(0,255,0), 2);
+//    }
 
     // Show the final image
+    #ifdef DEBUG_VIEW
     cv::imshow("event image", eventVis);
     cv::waitKey(1);
-
+    #endif
 }
 
 /////////////////////////////////////////////////
@@ -673,8 +690,10 @@ void GazeboBlast3DCameraPlugin::PublishRGBMessage(cv::Mat image) {
     rgbCamera_pub_->Publish(rgbCamera_message);
 
     // For debug
+    #ifdef DEBUG_VIEW
     cv::imshow("blended RGB image", image);
     cv::waitKey(1);
+    #endif
 }
 
 /////////////////////////////////////////////////
@@ -691,7 +710,7 @@ void GazeboBlast3DCameraPlugin::processDelta(cv::Mat &last_image, cv::Mat &curr_
 
         cv::Mat pos_mask;
         cv::Mat neg_mask;
-                // store them in the plugin’s members
+                // store them in the plugins members
         
         cv::threshold(pos_diff, pos_mask, event_threshold, 255, cv::THRESH_BINARY);
         cv::threshold(neg_diff, neg_mask, event_threshold, 255, cv::THRESH_BINARY);
@@ -825,20 +844,24 @@ void GazeboBlast3DCameraPlugin::Blast3DCallback(Blast3dMsgPtr & blast3d_msg) {
     //blastMsgQueue.push_back(*blast3d_msg);
     blastMsgList.push_back(msg_copy);
     
+    uint32_t eid = next_event_id_++;
+    event_id_map_[blast3d_msg->time()] = eid;
+
+    
     //store bounding-box data in cameraBlasts_:
-    double start_t = blast3d_msg->time();
-    double end_t   = start_t + 1.0;  // e.g. 1 second duration
-    double halfSz  = 1.0;           // half-size of bounding box (meters)
-
-    BlastData2D data;
-    data.start_time  = start_t;
-    data.end_time    = end_t;
-    data.center      = ignition::math::Vector3d(blast3d_msg->x(),
-                                                blast3d_msg->y(),
-                                                blast3d_msg->z());
-    data.box_half_size = halfSz;
-
-    cameraBlasts_.push_back(data);
+//    double start_t = blast3d_msg->time();
+//    double end_t   = start_t + 1.0;  // e.g. 1 second duration
+//    double halfSz  = 1.0;           // half-size of bounding box (meters)
+//
+//    BlastData2D data;
+//    data.start_time  = start_t;
+//    data.end_time    = end_t;
+//    data.center      = ignition::math::Vector3d(blast3d_msg->x(),
+//                                                blast3d_msg->y(),
+//                                                blast3d_msg->z());
+//    data.box_half_size = halfSz;
+//
+//    cameraBlasts_.push_back(data);
 }
 
 /////////////////////////////////////////////////
@@ -865,66 +888,83 @@ void GazeboBlast3DCameraPlugin::CreatePubsAndSubs() {
             blast3d_server_reglink_topic_ << "." << std::endl;
 
 }
-bool GazeboBlast3DCameraPlugin::ProjectBlastToImage(const BlastData2D &blast,
-                                                    double &umin, double &vmin,
-                                                    double &umax, double &vmax) {
-    // 1) get camera pose, e.g.
-    ignition::math::Pose3d camPose = this->camera->WorldPose();
-    ignition::math::Quaterniond R_world2cam = camPose.Rot().Inverse();
-    ignition::math::Vector3d    t_world2cam = -(R_world2cam * camPose.Pos());
 
-    double fx = this->focal_length_;
-    double fy = this->focal_length_;
-    double cx = double(this->width)/2.0;
-    double cy = double(this->height)/2.0;
+//void GazeboBlast3DCameraPlugin::PublishSyncLog(const std::string& source,
+//                                               uint32_t event_id,
+//                                               double sim_time,
+//                                               double standoff)
+//{
+//    gazebo_blast3d::BlastSync msg;
+//    msg.header.stamp = ros::Time::now();
+//    msg.event_id     = event_id;
+//    msg.source       = source;
+//    msg.vehicle      = vehicle_id_;
+//    msg.sim_time     = sim_time;
+//    msg.ros_time     = msg.header.stamp.toSec();
+//    msg.standoff_dist = standoff;
+//    sync_pub_.publish(msg);
+//}
 
-    // 2) 8 corners
-    std::vector<ignition::math::Vector3d> corners;
-    for (int dx=-1; dx<=1; dx+=2)
-     for (int dy=-1; dy<=1; dy+=2)
-      for (int dz=-1; dz<=1; dz+=2)
-      {
-        corners.push_back(
-          ignition::math::Vector3d(
-            blast.center.X() + dx*blast.box_half_size,
-            blast.center.Y() + dy*blast.box_half_size,
-            blast.center.Z() + dz*blast.box_half_size
-          )
-        );
-      }
+//bool GazeboBlast3DCameraPlugin::ProjectBlastToImage(const BlastData2D &blast,
+//                                                    double &umin, double &vmin,
+//                                                    double &umax, double &vmax) {
+//    // 1) get camera pose, e.g.
+//    ignition::math::Pose3d camPose = this->camera->WorldPose();
+//    ignition::math::Quaterniond R_world2cam = camPose.Rot().Inverse();
+//    ignition::math::Vector3d    t_world2cam = -(R_world2cam * camPose.Pos());
+//
+//    double fx = this->focal_length_;
+//    double fy = this->focal_length_;
+//    double cx = double(this->width)/2.0;
+//    double cy = double(this->height)/2.0;
+//
+//    // 2) 8 corners
+//    std::vector<ignition::math::Vector3d> corners;
+//    for (int dx=-1; dx<=1; dx+=2)
+//     for (int dy=-1; dy<=1; dy+=2)
+//      for (int dz=-1; dz<=1; dz+=2)
+//      {
+//        corners.push_back(
+//          ignition::math::Vector3d(
+//            blast.center.X() + dx*blast.box_half_size,
+//            blast.center.Y() + dy*blast.box_half_size,
+//            blast.center.Z() + dz*blast.box_half_size
+//          )
+//        );
+//      }
+//
+//    umin = vmin =  999999.0;
+//    umax = vmax = -999999.0;
+//    bool anyValid = false;
+//
+//    for (auto &Cw : corners)
+//    {
+//        // transform world->cam
+//        ignition::math::Vector3d Cc = R_world2cam * Cw + t_world2cam;
+//        double Xc = Cc.X(), Yc = Cc.Y(), Zc = Cc.Z();
+//        if (Zc <= 0) continue;
+//
+//        double u = fx*(Xc / Zc) + cx;
+//        double v = -fy*(Yc / Zc) + cy;
+//        if (u < umin) umin = u;
+//        if (v < vmin) vmin = v;
+//        if (u > umax) umax = u;
+//        if (v > vmax) vmax = v;
+//        anyValid = true;
+//    }
+//
+//    if (!anyValid) return false;
+//
+//    // clamp
+//    if (umin < 0) umin = 0;
+//    if (vmin < 0) vmin = 0;
+//    if (umax > this->width -1)  umax = this->width -1;
+//    if (vmax > this->height-1) vmax = this->height-1;
+//
+//    if (umin >= umax || vmin >= vmax)
+//        return false;
+//    return true;
+//}
 
-    umin = vmin =  999999.0;
-    umax = vmax = -999999.0;
-    bool anyValid = false;
 
-    for (auto &Cw : corners)
-    {
-        // transform world->cam
-        ignition::math::Vector3d Cc = R_world2cam * Cw + t_world2cam;
-        double Xc = Cc.X(), Yc = Cc.Y(), Zc = Cc.Z();
-        if (Zc <= 0) continue;
-
-        double u = fx*(Xc / Zc) + cx;
-        double v = -fy*(Yc / Zc) + cy;
-        if (u < umin) umin = u;
-        if (v < vmin) vmin = v;
-        if (u > umax) umax = u;
-        if (v > vmax) vmax = v;
-        anyValid = true;
-    }
-
-    if (!anyValid) return false;
-
-    // clamp
-    if (umin < 0) umin = 0;
-    if (vmin < 0) vmin = 0;
-    if (umax > this->width -1)  umax = this->width -1;
-    if (vmax > this->height-1) vmax = this->height-1;
-
-    if (umin >= umax || vmin >= vmax)
-        return false;
-    return true;
-}
-
-
-/* vim: set et fenc=utf-8 ff=unix sts=0 sw=2 ts=2 : */ 
+/* vim: set et fenc=utf-8 ff=unix sts=0 sw=2 ts=2 : */
