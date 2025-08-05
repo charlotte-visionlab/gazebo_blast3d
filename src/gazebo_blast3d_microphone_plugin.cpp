@@ -233,8 +233,12 @@ namespace gazebo {
         std::vector<float> packet(output_buffer_pub[0].begin(), output_buffer_pub[0].begin() + packetEnd);
         PublishAudioMessage(packet);
         double sim_t = world_->SimTime().Double();
-        if (last_eid_ != 0)
+        if (last_eid_ != 0){
             blast3d_sync::publishSyncLog(sync_pub_, "acoustic", last_eid_, now.Double(), vehicle_id_);
+//            gzdbg << "Publishing sync log from microphone plugin with eid: " << last_eid_ << std::endl;
+
+//            gzdbg << "[SYNCLOG] Logging from source=acoustic at sim_time=" << now.Double() << std::endl;
+        }
 
 
 
