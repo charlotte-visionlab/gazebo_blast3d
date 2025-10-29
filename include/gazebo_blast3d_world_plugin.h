@@ -117,6 +117,17 @@ namespace gazebo {
 
         ros::NodeHandle nh_;
         ros::Publisher  sync_pub_;
+        
+        struct BlastRow { double t; double x; double y; double z; double Q; };
+        std::vector<BlastRow> schedule_;
+        bool use_schedule_ = false;
+        size_t next_idx_ = 0;
+
+        std::string schedule_csv_path_;
+        std::string gt_csv_path_;
+
+        bool loadScheduleCsv(const std::string& path, std::vector<BlastRow>& out);
+
 
     };
 }

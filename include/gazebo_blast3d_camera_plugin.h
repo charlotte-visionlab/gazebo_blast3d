@@ -53,6 +53,9 @@
 #include "gazebo_blast3d/BlastBox2D.h"
 #include "gazebo_blast3d/BlastSync.h"
 #include <unordered_map>
+#include "HighResSimTimer.h"
+#include <unordered_set>
+
 
 //#include "flow_opencv.hpp"
 //#include "flow_px4.hpp"
@@ -326,10 +329,41 @@ namespace gazebo
         std::unordered_map<double,uint32_t> event_id_map_; // key: blast time
         int current_event_id_ = -1;
         
+        // one-shot guard to ensure we log event_cam once per EID
+        std::unordered_set<uint32_t> logged_event_cam_eids_;
+        
         // optional: cache standoff distance if you compute it
         double last_standoff_dist_ = 0.0;
         
         void PublishSyncLog(const std::string& source, uint32_t event_id, double sim_time, double standoff=0.0);
+        
+        // fire at exact sim-time
+        HighResSimTimer timer_{[this](){ return this->world_->SimTime().Double(); }};
+
+        // cache last blast world params for standoff calc & logging
+        double blast_x_ = 0.0, blast_y_ = 0.0, blast_z_ = 0.0;
+        
+        // Logging of measured 3-D location
+        std::ofstream meas_loc_csv_;
+        std::unordered_set<uint32_t> loc_logged_;   // to ensure one-shot per EID
+        // one-shot latch to compute + log location on the first frame that has masks
+        int pending_loc_eid_ = -1;
+
+        
+        double fx_ = 0.0, fy_ = 0.0, cx_ = 0.0, cy_ = 0.0;
+        
+        double ground_z_ = 0.0;  // world ground plane height
+
+        
+        // Convert pixel (u,v) to a unit ray direction in the **camera** frame
+        ignition::math::Vector3d PixelToRayCam(double u, double v) const;
+
+        // Intersect a world ray with a horizontal plane z = z_plane.
+        // Returns true if intersection is forward (t>0) and writes P.
+        bool IntersectRayWithPlane(const ignition::math::Vector3d& origin_w,
+                                   const ignition::math::Vector3d& dir_w,
+                                   double z_plane,
+                                   ignition::math::Vector3d& P_w) const;
 
   };
 }

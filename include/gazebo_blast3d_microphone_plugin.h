@@ -28,7 +28,15 @@
 
 #include <ros/ros.h>
 #include <ros/publisher.h>   // optional, ros/ros.h already pulls it
-#include <std_msgs/Float32MultiArray.h> 
+#include <std_msgs/Float32MultiArray.h>
+#include "HighResSimTimer.h"
+#include <deque>
+
+#include <unordered_map>
+#include <unordered_set>
+#include <algorithm>
+#include <cmath>
+
 
 using namespace std;
 
@@ -126,7 +134,41 @@ namespace gazebo {
         std::unordered_map<double, uint32_t> event_id_map_;
         uint32_t last_eid_ = 0;
         ros::Publisher audio_ros_pub_;
+        
+        // precise sim-time trigger for seismic/air onsets
+        HighResSimTimer timer_{[this](){ return this->world_->SimTime().Double(); }};
 
+        struct PendingOnset {
+          uint32_t eid;
+          size_t   onset_sample; // absolute sample index in the stream where path begins
+          double   sim_time;     // nominal sim time of onset
+          std::string path;      // "acoustic_seismic" or "acoustic_air"
+        };
+        std::deque<PendingOnset> pending_onsets_;
+        size_t samples_published_{0}; // increase by packet size after each PublishAudioMessage
+        
+        void injectSeismicWaveform(size_t startIdx);
+        void injectAirWaveformWithAttenuation(size_t startIdx, float distance_m);
+        void enqueueOnset(uint32_t eid, size_t onset_sample, double sim_time, const std::string& path);
+        
+        // Running sample counter for channel 0 (total samples published so far)
+        size_t samples_sent_ = 0;
+
+        // For each EID, the sample index where the air-blast packet begins
+        std::unordered_map<uint32_t, size_t> mic_pending_idx_;
+
+        // For each EID, the free-space standoff distance (for logging)
+        std::unordered_map<uint32_t, double> mic_pending_range_;
+
+        // Ensure we only log once per EID
+        // Targets and “already logged” sets for each arrival
+        std::unordered_map<uint32_t,double> mic_target_time_air_,  mic_target_time_seis_;
+        std::unordered_map<uint32_t,double> mic_target_range_air_, mic_target_range_seis_;
+        std::unordered_set<uint32_t>        mic_air_logged_,       mic_seis_logged_;
+
+        
+        // store blast source world position to recompute R at detection
+        std::unordered_map<uint32_t, ignition::math::Vector3d> blast_src_world_;
 
 
     };

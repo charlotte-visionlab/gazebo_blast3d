@@ -37,6 +37,8 @@
 
 #include "utils/common.h"
 #include "utils/AudioFile.h"
+#include "HighResSimTimer.h"
+
 #include <ros/ros.h>
 #include <ros/publisher.h>   // optional, ros/ros.h already pulls it
 
@@ -144,6 +146,22 @@ namespace gazebo {
         int             current_event_id_ = -1; // model/mic if you need it
         std::unordered_map<double, uint32_t> event_id_map_;
         uint32_t last_eid_ = 0;
+        
+        HighResSimTimer timer_{[this](){ return this->world_->SimTime().Double(); }};
+
+        // helper to apply the force/torque exactly now
+        void applyBlastAt(const blast3d_msgs::msgs::Blast3d& msg);
+        
+        // Add near top of class (private):
+        struct PendingImpulse {
+          double trigger_time;
+          double weight_tnt;
+          ignition::math::Vector3d rel;  // blast relative to link
+          uint32_t eid; //event id for sync logging
+        };
+        std::deque<PendingImpulse> pending_;
+        
+        common::Time last_time_;
 
         
         double pub_interval_;

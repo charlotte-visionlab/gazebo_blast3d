@@ -5,10 +5,12 @@
 #include <fstream>
 #include <mutex>
 #include <string>
-inline uint32_t nextEventId() {
-    static std::atomic<uint32_t> c{1};
-    return c++;
-}
+#include <iomanip>
+
+//inline uint32_t nextEventId() {
+//    static std::atomic<uint32_t> c{1};
+//    return c++;
+//}
 
 #ifndef SYNC_CSV_PATH
 #define SYNC_CSV_PATH "/home.md2/sparab2/wind/uncc_wind_control/ros_image/ros_ws/sync_log.csv"
@@ -69,6 +71,14 @@ inline void publishSyncLog(ros::Publisher& pub,
       << msg.ros_time << ',' << latency_ms << ',' << msg.vehicle << ','
       << msg.standoff_dist << ',' << msg.header.seq << '\n';
     f.flush();
+}
+
+inline uint32_t eid_from_time(double t) {
+    // Convert seconds -> integer microseconds and mix a bit to avoid
+    // trivial sequential patterns; keeps ID stable across processes.
+    const uint64_t us  = static_cast<uint64_t>(t * 1e6 + 0.5);
+    const uint64_t mix = us ^ (us >> 33) ^ (us << 11);
+    return static_cast<uint32_t>(mix & 0xffffffffu);
 }
 
 } // namespace blast3d_sync
