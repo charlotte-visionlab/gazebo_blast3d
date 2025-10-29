@@ -25,6 +25,8 @@
 #include <vector>
 #include <chrono>
 #include <ros/ros.h>
+#include <deque>
+#include <cstdint>
 
 #include "sync_utils.h"
 
@@ -52,7 +54,8 @@ namespace gazebo {
     /////////////////////////////////////////////////
 
     GazeboBlast3DMicrophonePlugin::~GazeboBlast3DMicrophonePlugin() {
-        updateConnection_->~Connection();
+        // SAFE cleanup: reset the smart pointer instead of calling its destructor
+        updateConnection_.reset();
     }
 
     /////////////////////////////////////////////////
@@ -72,8 +75,8 @@ namespace gazebo {
         
         audio_ros_pub_ = nh_.advertise<std_msgs::Float32MultiArray>("blast_audio", 1);
         vehicle_id_ = _sdf->HasElement("vehicleName") ? _sdf->Get<std::string>("vehicleName") : model_->GetName();
-        std::unordered_map<double,uint32_t> event_id_map_;
-        uint32_t last_eid_ = 0;
+//        std::unordered_map<double,uint32_t> event_id_map_;
+//        uint32_t last_eid_ = 0;
 
 
         //==============================================//
@@ -205,62 +208,173 @@ namespace gazebo {
     }
 
     /////////////////////////////////////////////////
-
-    void GazeboBlast3DMicrophonePlugin::OnUpdate(const common::UpdateInfo& _info) {
-        
-        plotEverySteps++;
-        
-#if GAZEBO_MAJOR_VERSION >= 9
+    
+    void GazeboBlast3DMicrophonePlugin::OnUpdate(const common::UpdateInfo& _info)
+    {
+    #if GAZEBO_MAJOR_VERSION >= 9
+        const double sim_now = world_->SimTime().Double();
         common::Time now = world_->SimTime();
-#else
+    #else
+        const double sim_now = world_->GetSimTime().Double();
         common::Time now = world_->GetSimTime();
-#endif
-       
+    #endif
+
         if (!pubs_and_subs_created_) {
             CreatePubsAndSubs();
             pubs_and_subs_created_ = true;
         }
 
-        if ((now - last_time_).Double() < pub_interval_ || pub_interval_ == 0.0) {
+        // --- log AIR detections ---
+        for (auto it = mic_target_time_air_.begin(); it != mic_target_time_air_.end(); ) {
+            const uint32_t eid = it->first;
+            const double tt = it->second;
+            if (sim_now >= tt && !mic_air_logged_.count(eid)) {
+                const double R = mic_target_range_air_[eid];
+                blast3d_sync::publishSyncLog(sync_pub_, "mic_air", eid, sim_now, vehicle_id_, R);
+                mic_air_logged_.insert(eid);
+                it = mic_target_time_air_.erase(it);
+                mic_target_range_air_.erase(eid);
+            } else {
+                ++it;
+            }
+        }
+
+        // --- log SEISMIC detections ---
+        for (auto it = mic_target_time_seis_.begin(); it != mic_target_time_seis_.end(); ) {
+            const uint32_t eid = it->first;
+            const double tt = it->second;
+            if (sim_now >= tt && !mic_seis_logged_.count(eid)) {
+                const double R = mic_target_range_seis_[eid];
+                blast3d_sync::publishSyncLog(sync_pub_, "mic_seis", eid, sim_now, vehicle_id_, R);
+                mic_seis_logged_.insert(eid);
+                it = mic_target_time_seis_.erase(it);
+                mic_target_range_seis_.erase(eid);
+            } else {
+                ++it;
+            }
+        }
+
+        // --- rate gate for audio publishing only ---
+        if (pub_interval_ > 0.0) {
+            if ((now - last_time_).Double() < pub_interval_) {
+                return;  // (we already did detection checks above)
+            }
+            last_time_ = now;
+        } else {
+            last_time_ = now;
+        }
+
+        // --- packetize and publish audio ---
+        size_t packetSize = 0;
+        if (pub_interval_ > 0.0) {
+            packetSize = static_cast<size_t>(
+                std::floor(pub_interval_ * static_cast<double>(this->pubSampleRate)));
+        } else {
+            const double fallback_sec = 0.005;
+            packetSize = static_cast<size_t>(
+                std::max(1.0, std::floor(fallback_sec * static_cast<double>(this->pubSampleRate))));
+        }
+
+        if (output_buffer_pub.empty() || output_buffer_pub[0].empty() || packetSize == 0) {
             return;
         }
-        last_time_ = now;
-      
-//         Packetize the audio file
-        size_t packetSize = std::floor(pub_interval_ * this->pubSampleRate);
-        size_t numSamples = output_buffer_pub[0].size(); // Assuming samples[0] contains the audio data for one channel
-        size_t packetEnd = std::min(packetSize, numSamples);
-        std::vector<float> packet(output_buffer_pub[0].begin(), output_buffer_pub[0].begin() + packetEnd);
+
+        const size_t numAvail = output_buffer_pub[0].size();
+        const size_t packetEnd = std::min(packetSize, numAvail);
+
+        std::vector<float> packet(output_buffer_pub[0].begin(),
+                                  output_buffer_pub[0].begin() + packetEnd);
+
         PublishAudioMessage(packet);
-        double sim_t = world_->SimTime().Double();
-        if (last_eid_ != 0){
-            blast3d_sync::publishSyncLog(sync_pub_, "acoustic", last_eid_, now.Double(), vehicle_id_);
-//            gzdbg << "Publishing sync log from microphone plugin with eid: " << last_eid_ << std::endl;
 
-//            gzdbg << "[SYNCLOG] Logging from source=acoustic at sim_time=" << now.Double() << std::endl;
-        }
+        samples_sent_ += packetEnd;
 
+        output_buffer_pub[0].erase(output_buffer_pub[0].begin(),
+                                   output_buffer_pub[0].begin() + packetEnd);
 
-
-        output_buffer_pub[0].erase(output_buffer_pub[0].begin(), output_buffer_pub[0].begin() + packetEnd);
         if (output_buffer_pub[0].size() < this->pubBufSize) {
-            std::copy(background_audio_.samples[0].begin(), background_audio_.samples[0].begin() + packetEnd,
-                    std::back_inserter(output_buffer_pub[0]));
-        }
-        
-        if (plotEverySteps % 100 == 0) {
-        
-            AudioFile<float> a;
-            a.setNumChannels (1);
-            a.setNumSamplesPerChannel (packet.size());
-            a.setBitDepth (this->pubBitDepth);
-            a.samples[0] = packet;
-
-            std::string filename = "audioPacket.wav";
-            std::string filePath = blast3d_audio_datafolder_ + "/../" + filename; 
-            a.save(filePath, AudioFileFormat::Wave);
+            const size_t need = std::min(
+                static_cast<size_t>(background_audio_.samples[0].size()),
+                this->pubBufSize - output_buffer_pub[0].size());
+            std::copy(background_audio_.samples[0].begin(),
+                      background_audio_.samples[0].begin() + need,
+                      std::back_inserter(output_buffer_pub[0]));
         }
     }
+
+
+//    void GazeboBlast3DMicrophonePlugin::OnUpdate(const common::UpdateInfo& _info) {
+//        
+//        plotEverySteps++;
+//        
+//#if GAZEBO_MAJOR_VERSION >= 9
+//        common::Time now = world_->SimTime();
+//#else
+//        common::Time now = world_->GetSimTime();
+//#endif
+//       
+//        if (!pubs_and_subs_created_) {
+//            CreatePubsAndSubs();
+//            pubs_and_subs_created_ = true;
+//        }
+//        
+//        if ((now - last_time_).Double() < pub_interval_ || pub_interval_ == 0.0) {
+//            return;
+//        }
+//        last_time_ = now;
+//      
+////         Packetize the audio file
+//        size_t packetSize = std::floor(pub_interval_ * this->pubSampleRate);
+//        size_t numSamples = output_buffer_pub[0].size(); // Assuming samples[0] contains the audio data for one channel
+//        size_t packetEnd = std::min(packetSize, numSamples);
+//        std::vector<float> packet(output_buffer_pub[0].begin(), output_buffer_pub[0].begin() + packetEnd);
+//        PublishAudioMessage(packet);
+//        
+//        samples_sent_ += packetEnd;
+//
+//        
+//        for (auto it = mic_pending_idx_.begin(); it != mic_pending_idx_.end(); ) {
+//            const uint32_t eid    = it->first;
+//            const size_t trigger  = it->second;  // absolute stream index
+//            if (samples_sent_ >= trigger && !mic_logged_.count(eid)) {
+//                const double r = mic_pending_range_[eid];
+//                // log the **current** sim time as the measured detection time
+//        #if GAZEBO_MAJOR_VERSION >= 9
+//                const double t_meas = world_->SimTime().Double();
+//        #else
+//                const double t_meas = world_->GetSimTime().Double();
+//        #endif
+//                blast3d_sync::publishSyncLog(sync_pub_, "mic", eid, t_meas, vehicle_id_, r);
+//                mic_logged_.insert(eid);
+//                it = mic_pending_idx_.erase(it);
+//                mic_pending_range_.erase(eid);
+//            } else {
+//                ++it;
+//            }
+//        }
+//        
+//        // output buffer maintenance
+//        output_buffer_pub[0].erase(output_buffer_pub[0].begin(), output_buffer_pub[0].begin() + packetEnd);
+//        if (output_buffer_pub[0].size() < this->pubBufSize) {
+//            std::copy(background_audio_.samples[0].begin(), background_audio_.samples[0].begin() + packetEnd,
+//                    std::back_inserter(output_buffer_pub[0]));
+//        }
+//        
+//        #ifdef DEBUG_DUMP_AUDIO
+//        if (plotEverySteps % 100 == 0) {
+//        
+//            AudioFile<float> a;
+//            a.setNumChannels (1);
+//            a.setNumSamplesPerChannel (packet.size());
+//            a.setBitDepth (this->pubBitDepth);
+//            a.samples[0] = packet;
+//
+//            std::string filename = "audioPacket.wav";
+//            std::string filePath = blast3d_audio_datafolder_ + "/../" + filename; 
+//            a.save(filePath, AudioFileFormat::Wave);
+//        }
+//        #endif
+//    }
 
     void GazeboBlast3DMicrophonePlugin::PublishAudioMessage(std::vector<float>& sampleData) {
 
@@ -290,131 +404,229 @@ namespace gazebo {
         ros_msg.layout.data_offset  = 0;
         ros_msg.data = sampleData;   // copies floats
         audio_ros_pub_.publish(ros_msg);
-
-        
-        // For Debugging, by saving a newly generated audio file with gain:
-//        AudioFile<float> a;
-//        a.setNumChannels (1);
-//        a.setNumSamplesPerChannel (sampleData.size());
-//        a.setBitDepth (this->pubBitDepth);
-//        a.samples[0] = sampleData;
-//            
-//        auto nowTime = std::chrono::system_clock::now();
-//        auto ns_since_epoch = std::chrono::duration_cast<std::chrono::nanoseconds>(nowTime.time_since_epoch()).count();
-//        std::string filename = std::to_string(ns_since_epoch);
-//        filename = filename + ".wav";
-//        std::string filePath = blast3d_audio_datafolder_ + "/../" + filename; 
-//        a.save(filePath, AudioFileFormat::Wave);
     }
+    
+    void GazeboBlast3DMicrophonePlugin::Blast3DCallback(Blast3dMsgPtr& blast3d_msg)
+    {
+    #if GAZEBO_MAJOR_VERSION >= 9
+        const double sim_now = world_->SimTime().Double();
+    #else
+        const double sim_now = world_->GetSimTime().Double();
+    #endif
 
-    void GazeboBlast3DMicrophonePlugin::Blast3DCallback(Blast3dMsgPtr & blast3d_msg) {
-        if (kPrintOnMsgCallback) {
-            gzdbg << __FUNCTION__ << "() blast message received by model plugin." << std::endl;
-        }
+        // Stable event id derived from the (global) blast time
+        const double t_event = blast3d_msg->time();
+        const uint32_t eid   = blast3d_sync::eid_from_time(t_event);
+        event_id_map_[t_event] = eid;
+        last_eid_ = eid;
 
-#if GAZEBO_MAJOR_VERSION >= 9
-        common::Time now = world_->SimTime();
-#else
-        common::Time now = world_->GetSimTime();
-#endif
-        double current_time_double = now.Double();
-        
-        // COMPUTE INDEX AND BUFFER(S) TO INSERT DATA 
-        // DO EFFECT OF BLAST HERE
-        gzdbg << "Blast is happening." << std::endl;
-        float Q = blast3d_msg->weight_tnt_kg();
-        float Ca = 340; //air speed
-        float Cs = 6000; //solid speed
-         // calculate the time delay of the blast from now. The blast3d_msg->time() is the timestamp from the start time when timestamp is 0.
-        double future_time = blast3d_msg->time() - current_time_double;
-        if (future_time < 0) {
-            gzdbg << "Blast happened in the past time. " << std::endl;
+        // Ignore blasts already in the past (defensive)
+        const double future_time = t_event - sim_now;
+        if (future_time < 0.0) {
+            gzdbg << "[mic] EID=" << eid << " is in the past; ignoring.\n";
             return;
         }
-        ignition::math::Vector3d blastPosRelative(blast3d_msg->x(), blast3d_msg->y(), blast3d_msg->z());
-        float free_space_distance = blastPosRelative.Length();
-        float ground_distance = std::sqrt(blast3d_msg->x() * blast3d_msg->x() + blast3d_msg->y() * blast3d_msg->y());
-        float ground_2_uav_distance = std::abs(blast3d_msg->z());
-        double time_of_arrival_free_space = 0.34 * pow(free_space_distance, (1.4)) * pow(Q, (-0.2)) / Ca;
-        double avg_speed_free_space = free_space_distance / time_of_arrival_free_space;
-        double time_of_arrival_seismic = 0.91 * pow(ground_distance, (1.03)) * pow(Q, (-0.02)) / Cs + ground_2_uav_distance / avg_speed_free_space;
 
-        float backgroundAudioSampleRate = background_audio_.getSampleRate();
+        // Geometry: mic is on the vehicle (blast position is **relative to vehicle**)
+        ignition::math::Vector3d rel(blast3d_msg->x(), blast3d_msg->y(), blast3d_msg->z());
+        const double R        = rel.Length();
+        const double ground_R = std::sqrt(blast3d_msg->x()*blast3d_msg->x() + blast3d_msg->y()*blast3d_msg->y());
+        const double dz       = std::abs(blast3d_msg->z());
+        const float  Q        = blast3d_msg->weight_tnt_kg();
+
+        // --- Propagation models (same as your previous code) ---
+        const float Ca = 340.0f;   // air (approx)
+        const float Cs = 6000.0f;  // “seismic” proxy
+        const double toa_air =
+            0.34 * std::pow(R, 1.4) * std::pow(Q, -0.2) / Ca;  // seconds
+        const double avg_v_air = (toa_air > 0.0) ? (R / toa_air) : 0.0;
+        const double toa_seismic =
+            0.91 * std::pow(ground_R, 1.03) * std::pow(Q, -0.02) / Cs
+            + dz / std::max(1e-6, avg_v_air);                  // seconds
         
-        uint32_t eid = blast3d_sync::nextEventId();
-        event_id_map_[blast3d_msg->time()] = eid;
-        last_eid_ = eid;
-        
-        // Apply sound attenuation based on the distance
-        // https://en.wikipedia.org/wiki/Stokes%27s_law_of_sound_attenuation
-//        gzdbg << "airAttenuationCoeff = " << airAttenuationCoeff << std::endl;
-        double airAttenuationRate = std::exp(-airAttenuationCoeff * free_space_distance);
-//        gzdbg << "airAttenuationRate = " << airAttenuationRate << std::endl;
-        // Multiply each element of the vector by the rate
-        std::transform(airBlastAudio.samples[0].begin(), airBlastAudio.samples[0].end(), airBlastAudio.samples[0].begin(),
-                   [airAttenuationRate](float value) { return value * airAttenuationRate; });
+        const double t_air  = t_event + toa_air;
+        const double t_seis = t_event + toa_seismic;
 
-        // COMPUTE TIME INDEX IN BACKGROUND
-        size_t seismicSignalStartIdx = 0, seismicSignalEndIdx = 0, airSignalStartIdx = 0, airSignalEndIdx = 0;
-        seismicSignalStartIdx = backgroundAudioSampleRate * (future_time + time_of_arrival_seismic);
-        seismicSignalEndIdx = seismicSignalStartIdx + seismicAudio.samples[0].size();
-        if (avg_speed_free_space > Ca) {    
-            // when the average speed is less than 340 m/s, the blast is approximately considered to be "too far to be heard"
-            airSignalStartIdx = backgroundAudioSampleRate * (future_time + time_of_arrival_free_space);
-            airSignalEndIdx = airSignalStartIdx + airBlastAudio.samples[0].size();
-        }
-        // extend the buffer before adding the blast audios
-        size_t maxEndIdx = std::max(seismicSignalEndIdx, airSignalEndIdx);
-        if (maxEndIdx > output_buffer_pub[0].size()) {
-            if (maxEndIdx - output_buffer_pub[0].size() < background_audio_.samples[0].size()) { // safety check
-//                gzdbg << "Increasing the output buffer." << std::endl;
-                std::copy(background_audio_.samples[0].begin(), background_audio_.samples[0].begin() + maxEndIdx - output_buffer_pub[0].size(),
-                            std::back_inserter(output_buffer_pub[0]));
-            }
-            else{
-                gzwarn << "Blast signal end index exceeds the length of buffer. Increase the buffer size or reduce the future time of the blast." << std::endl;
-                return;
-            }
+        // schedule both detections
+        mic_target_time_air_[eid]   = t_air;
+        mic_target_range_air_[eid]  = R;
+
+        mic_target_time_seis_[eid]  = t_seis;
+        mic_target_range_seis_[eid] = R;
+
+
+        const float fs = background_audio_.getSampleRate();
+
+        // --- Make per-event copies (don’t mutate base waveforms) ---
+        std::vector<float> air = airBlastAudio.samples[0];
+        const std::vector<float>& seismic = seismicAudio.samples[0];
+
+        // Air attenuation (Stokes) -> scale local copy
+        {
+            const double T = 313.0;
+            const double etaAir   = 2.791e-7 * std::pow(T, 0.7355);
+            const double omegaAir = 500.0;
+            const double rhoAir   = 1.2;
+            const double alpha    = 2 * etaAir * omegaAir * omegaAir /
+                                    (3 * rhoAir * 340.0 * 340.0 * 340.0);
+            const double scale    = std::exp(-alpha * R);
+            for (auto &v : air) v = static_cast<float>(v * scale);
         }
 
-        // Insert audio signals
-        for (size_t i = 0; i < seismicAudio.samples[0].size(); ++i) {
-            output_buffer_pub[0][i + seismicSignalStartIdx] += seismicAudio.samples[0][i];
-        }
-        gzdbg << "Seismic audio inserted to output buffer." << std::endl;
+        // Compute buffer-relative insertion indices (for audio synthesis only)
+        const size_t seismicStart = static_cast<size_t>(fs * (future_time + toa_seismic));
+        const size_t seismicEnd   = seismicStart + seismic.size();
 
-        if (avg_speed_free_space > Ca) {    // when the average speed is below 340 m/s, the blast is approximately considered to be "too far to be heard"
-            for (size_t i = 0; i < blast_audio_.samples[0].size(); ++i) {
-                output_buffer_pub[0][i + airSignalStartIdx] += airBlastAudio.samples[0][i];
+        const size_t airStart = static_cast<size_t>(fs * (future_time + toa_air));
+        const size_t airEnd   = airStart + air.size();
+
+        // Ensure buffer long enough
+        const size_t need_end = std::max(seismicEnd, airEnd);
+        if (need_end > output_buffer_pub[0].size()) {
+            const size_t pad = need_end - output_buffer_pub[0].size();
+            if (pad < background_audio_.samples[0].size()) {
+                std::copy(background_audio_.samples[0].begin(),
+                          background_audio_.samples[0].begin() + pad,
+                          std::back_inserter(output_buffer_pub[0]));
+            } else {
+                gzwarn << "[mic] Buffer too short for EID=" << eid
+                       << "; increase buffer or reduce future_time.\n";
+                // Still continue to schedule detection even if audio can’t be inserted
             }
-            gzdbg << "Air blast audio inserted to output buffer." << std::endl;
         }
-        else {
-            gzdbg << "Air blast audio is too far to be heard due to attenuation." << std::endl;
+
+        // Insert seismic
+        if (seismicEnd <= output_buffer_pub[0].size()) {
+            for (size_t i = 0; i < seismic.size(); ++i)
+                output_buffer_pub[0][seismicStart + i] += seismic[i];
         }
-        
-        // For debug
-//        int len = this->pubSampleRate * 15;
-//        std::vector<float> packet(output_buffer_pub[0].begin(), output_buffer_pub[0].begin() + len);
-//        AudioFile<float> a;
-//        a.setNumChannels (1);
-//        a.setNumSamplesPerChannel (packet.size());
-//        a.setBitDepth (this->pubBitDepth);
-//        a.samples[0] = packet;
-//        auto nowTime = std::chrono::system_clock::now();
-//        auto ns_since_epoch = std::chrono::duration_cast<std::chrono::nanoseconds>(nowTime.time_since_epoch()).count();
-//        std::string filename = std::to_string(ns_since_epoch);
-//        filename = filename + ".wav";
-//        std::string filePath = blast3d_audio_datafolder_ + "/../" + filename;
-//        a.save(filePath, AudioFileFormat::Wave);
-//        
-//        output_buffer_pub[0].erase(output_buffer_pub[0].begin(), output_buffer_pub[0].begin() + len);
-//        if (output_buffer_pub[0].size() < this->pubBufSize) {
-//            int recoverSize = this->pubBufSize - output_buffer_pub[0].size();
-//            std::copy(background_audio_.samples[0].begin(), background_audio_.samples[0].begin() + len,
-//                    std::back_inserter(output_buffer_pub[0]));
+
+        // Insert air
+        if (airEnd <= output_buffer_pub[0].size()) {
+            for (size_t i = 0; i < air.size(); ++i)
+                output_buffer_pub[0][airStart + i] += air[i];
+        }
+
+        // ------------------------------------------------------------
+        // NEW: physics-based detection target (decoupled from audio IO)
+        // We will log a mic "detection" exactly at t_event + toa_air
+        // ------------------------------------------------------------
+        const double t_detect = t_event + toa_air; // absolute sim time
+//        mic_target_time_[eid]   = t_detect;
+//        mic_target_range_[eid]  = R;
+        // (Do NOT add any samples_sent_ / packet-based triggers anymore.)
+    }
+
+
+
+    
+//    void GazeboBlast3DMicrophonePlugin::Blast3DCallback(Blast3dMsgPtr & blast3d_msg) {
+//        if (kPrintOnMsgCallback) {
+//            gzdbg << __FUNCTION__ << "() blast message received by model plugin." << std::endl;
 //        }
-        }
+//
+//#if GAZEBO_MAJOR_VERSION >= 9
+//        common::Time now = world_->SimTime();
+//#else
+//        common::Time now = world_->GetSimTime();
+//#endif
+//        double current_time_double = now.Double();
+//        
+//        // COMPUTE INDEX AND BUFFER(S) TO INSERT DATA 
+//        // DO EFFECT OF BLAST HERE
+//        gzdbg << "Blast is happening." << std::endl;
+//        float Q = blast3d_msg->weight_tnt_kg();
+//        float Ca = 340; //air speed
+//        float Cs = 6000; //solid speed
+//         // calculate the time delay of the blast from now. The blast3d_msg->time() is the timestamp from the start time when timestamp is 0.
+//        double future_time = blast3d_msg->time() - current_time_double;
+//        if (future_time < 0) {
+//            gzdbg << "Blast happened in the past time. " << std::endl;
+//            return;
+//        }
+//        ignition::math::Vector3d blastPosRelative(blast3d_msg->x(), blast3d_msg->y(), blast3d_msg->z());
+//        float free_space_distance = blastPosRelative.Length();
+//        float ground_distance = std::sqrt(blast3d_msg->x() * blast3d_msg->x() + blast3d_msg->y() * blast3d_msg->y());
+//        float ground_2_uav_distance = std::abs(blast3d_msg->z());
+//        double time_of_arrival_free_space = 0.34 * pow(free_space_distance, (1.4)) * pow(Q, (-0.2)) / Ca;
+//        double avg_speed_free_space = free_space_distance / time_of_arrival_free_space;
+//        double time_of_arrival_seismic = 0.91 * pow(ground_distance, (1.03)) * pow(Q, (-0.02)) / Cs + ground_2_uav_distance / avg_speed_free_space;
+//
+//        float backgroundAudioSampleRate = background_audio_.getSampleRate();
+//        
+////        uint32_t eid = blast3d_sync::nextEventId();
+////        uint32_t eid = event_id_map_[blast3d_msg->time()];
+////
+////        event_id_map_[blast3d_msg->time()] = eid;
+////        last_eid_ = eid;
+//        
+////        const double t  = blast3d_msg->time();
+////        const uint32_t eid = blast3d_sync::eid_from_time(t);
+////        event_id_map_[t] = eid;
+////        last_eid_ = eid;
+////        
+////        {
+////            // one-shot MIC sync at expected air-blast arrival
+////            const double sim_t_mic = t + time_of_arrival_free_space;
+////            blast3d_sync::publishSyncLog(sync_pub_, "mic", eid, now.Double(), vehicle_id_, free_space_distance);
+////            gzdbg << "[mic] EID=" << eid << " t=" << sim_t_mic << " (air arrival)" << std::endl;
+////        }
+//        
+//        // Register a pending log for the AIR arrival, if we actually inserted it
+//        if (avg_speed_free_space > Ca) {
+//            mic_pending_idx_[eid]   = airSignalStartIdx;
+//            mic_pending_range_[eid] = free_space_distance;
+//        }
+// 
+//        // Apply sound attenuation based on the distance
+//        // https://en.wikipedia.org/wiki/Stokes%27s_law_of_sound_attenuation
+////        gzdbg << "airAttenuationCoeff = " << airAttenuationCoeff << std::endl;
+//        double airAttenuationRate = std::exp(-airAttenuationCoeff * free_space_distance);
+////        gzdbg << "airAttenuationRate = " << airAttenuationRate << std::endl;
+//        // Multiply each element of the vector by the rate
+//        std::transform(airBlastAudio.samples[0].begin(), airBlastAudio.samples[0].end(), airBlastAudio.samples[0].begin(),
+//                   [airAttenuationRate](float value) { return value * airAttenuationRate; });
+//
+//        // COMPUTE TIME INDEX IN BACKGROUND
+//        size_t seismicSignalStartIdx = 0, seismicSignalEndIdx = 0, airSignalStartIdx = 0, airSignalEndIdx = 0;
+//        seismicSignalStartIdx = backgroundAudioSampleRate * (future_time + time_of_arrival_seismic);
+//        seismicSignalEndIdx = seismicSignalStartIdx + seismicAudio.samples[0].size();
+//        if (avg_speed_free_space > Ca) {    
+//            // when the average speed is less than 340 m/s, the blast is approximately considered to be "too far to be heard"
+//            airSignalStartIdx = backgroundAudioSampleRate * (future_time + time_of_arrival_free_space);
+//            airSignalEndIdx = airSignalStartIdx + airBlastAudio.samples[0].size();
+//        }
+//        // extend the buffer before adding the blast audios
+//        size_t maxEndIdx = std::max(seismicSignalEndIdx, airSignalEndIdx);
+//
+//        if (maxEndIdx > output_buffer_pub[0].size()) {
+//            if (maxEndIdx - output_buffer_pub[0].size() < background_audio_.samples[0].size()) { // safety check
+////                gzdbg << "Increasing the output buffer." << std::endl;
+//                std::copy(background_audio_.samples[0].begin(), background_audio_.samples[0].begin() + maxEndIdx - output_buffer_pub[0].size(),
+//                            std::back_inserter(output_buffer_pub[0]));
+//            }
+//            else{
+//                gzwarn << "Blast signal end index exceeds the length of buffer. Increase the buffer size or reduce the future time of the blast." << std::endl;
+//                return;
+//            }
+//        }
+//
+//        // Insert audio signals
+//        for (size_t i = 0; i < seismicAudio.samples[0].size(); ++i) {
+//            output_buffer_pub[0][i + seismicSignalStartIdx] += seismicAudio.samples[0][i];
+//        }
+//        gzdbg << "Seismic audio inserted to output buffer." << std::endl;
+//
+//        if (avg_speed_free_space > Ca) {    // when the average speed is below 340 m/s, the blast is approximately considered to be "too far to be heard"
+//            for (size_t i = 0; i < blast_audio_.samples[0].size(); ++i) {
+//                output_buffer_pub[0][i + airSignalStartIdx] += airBlastAudio.samples[0][i];
+//            }
+//            gzdbg << "Air blast audio inserted to output buffer." << std::endl;
+//        }
+//        else {
+//            gzdbg << "Air blast audio is too far to be heard due to attenuation." << std::endl;
+//        }
+//    }
 
     void GazeboBlast3DMicrophonePlugin::CreatePubsAndSubs() {
         // Gazebo publishers and subscribers

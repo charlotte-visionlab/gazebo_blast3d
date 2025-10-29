@@ -6,7 +6,7 @@
  * You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
-
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -20,6 +20,11 @@
 namespace gazebo {
 
     GazeboBlast3DModelPlugin::~GazeboBlast3DModelPlugin() {
+        // SAFE cleanup for event connection + close file if open
+        updateConnection_.reset();
+        if (blastDataFile.is_open()) {
+            blastDataFile.close();
+        }
     }
 
     void GazeboBlast3DModelPlugin::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf) {
@@ -88,6 +93,12 @@ namespace gazebo {
     }
 
     void GazeboBlast3DModelPlugin::OnUpdate(const common::UpdateInfo& _info) {
+        #if GAZEBO_MAJOR_VERSION >= 9
+            common::Time now = world_->SimTime();
+        #else
+            common::Time now = world_->GetSimTime();
+        #endif
+
         
         plotEverySteps++;
         bool plot = false;
@@ -106,77 +117,85 @@ namespace gazebo {
 
         std::vector<blast3d_msgs::msgs::Blast3d>::iterator msg_iter;
         for (msg_iter = blastMsgList.begin(); msg_iter != blastMsgList.end(); ++msg_iter) {
-            if (msg_iter->time() < current_time_double) {
+            if (msg_iter->time() < current_time_double) { //check_time_here
                 // DO EFFECT OF BLAST HERE
                 ignition::math::Vector3d blastPosRelative(msg_iter->x(), msg_iter->y(), msg_iter->z());
                 float distance = blastPosRelative.Length();
                 double time_of_arrival = distance / 300.0;
                 if (msg_iter->time() + time_of_arrival < current_time_double) {
-                    //double time_elapsed_since_blast_start = current_time_double - msg_iter->time();
+
+                    // ---- EID: look it up BEFORE mutating msg_iter ----
+                    double orig_time = msg_iter->time();
+                    auto it = event_id_map_.find(orig_time);
+                    uint32_t eid = (it != event_id_map_.end()) ? it->second : blast3d_sync::nextEventId();
+                    // ---------------------------------------------------
+
                     double weight_TNT_kg = msg_iter->weight_tnt_kg();
                     ignition::math::Vector3d linkPos = link_->WorldPose().Pos();
                     ignition::math::Vector3d blastPos = linkPos + blastPosRelative;
+
                     // FORCE 
                     double r = blastPosRelative.Length();
                     double az = std::atan2(msg_iter->y(), msg_iter->x());   // phi
-                    double el = std::acos(msg_iter->z() / r);   // theta
+                    double el = std::acos(msg_iter->z() / r);               // theta
                     double x = sin(az + M_PI) * cos(M_PI - el);
                     double y = sin(az + M_PI) * sin(M_PI - el);
                     double z = cos(az + M_PI);
                     ignition::math::Vector3d dir = {x, y, z};
+
                     double forceImpulseNs = 2.2116 * std::pow(r, -2.1604) * 2.2116 * weight_TNT_kg + 0.0196;
                     ignition::math::Vector3d forceImpulseOnLink = forceImpulseNs * dir; 
                     // convert the impulses into ~1ms long step functions 
                     ignition::math::Vector3d forceOnLink = forceImpulseOnLink / 0.001;
-                    // ignition::math::Vector3d forceOnLink = 1.0e5 * (weight_TNT_kg / (distance * distance)) * (blastPosRelative / blastPosRelative.Length());
+
                     double forceStrength = forceOnLink.Length();
                     if (forceStrength > blast_force_linear_max) {
                         forceOnLink *= blast_force_linear_max / forceStrength;
                     }
+
                     // TORQUE
                     std::vector<double> blastCoords = {sin(az) * cos(el), sin(el) * sin(el), cos(az)};
-                    // cross product
-                    ignition::math::Vector3d momentDir = {blastCoords[1] * forceImpulseOnLink[2] - blastCoords[2] * forceImpulseOnLink[1], 
-                                                    blastCoords[2] * forceImpulseOnLink[0] - blastCoords[0] * forceImpulseOnLink[2], 
-                                                    blastCoords[0] * forceImpulseOnLink[1] - blastCoords[1] * forceImpulseOnLink[0]};
+                    ignition::math::Vector3d momentDir = {
+                        blastCoords[1] * forceImpulseOnLink[2] - blastCoords[2] * forceImpulseOnLink[1], 
+                        blastCoords[2] * forceImpulseOnLink[0] - blastCoords[0] * forceImpulseOnLink[2], 
+                        blastCoords[0] * forceImpulseOnLink[1] - blastCoords[1] * forceImpulseOnLink[0]
+                    };
                     double momentImpulseNms = 4.8894 * std::pow(r, -0.0262) * 4.8894 * weight_TNT_kg + 5.4295;
                     ignition::math::Vector3d momentImpulseOnLink = momentImpulseNms * momentDir; 
-                    // convert the impulses into ~100ms long step functions (TODO: MODEL NEEDS TO BE IMPROVED)
                     ignition::math::Vector3d torqueOnLink = momentImpulseOnLink / 0.001;
+
                     double torqueStrength = torqueOnLink.Length();
                     if (torqueStrength > blast_force_torque_max) {
                         torqueOnLink *= blast_force_torque_max / torqueStrength;
                     }
+
                     link_->AddForce(forceOnLink);
                     link_->AddTorque(torqueOnLink);
+
                     gzdbg << __FUNCTION__ << "() exerting force (X,Y,Z)=(" <<
                             forceOnLink.X() << ", " << forceOnLink.Y() << ", " <<
                             forceOnLink.Z() << ") from blast model plugin for blast at time " <<
-                            msg_iter->time() << "." << std::endl;
+                            orig_time << "." << std::endl;
                     gzdbg << __FUNCTION__ << "() exerting torque (X,Y,Z)=(" <<
                             torqueOnLink.X() << ", " << torqueOnLink.Y() << ", " <<
                             torqueOnLink.Z() << ") from blast model plugin for blast at time " <<
-                            msg_iter->time() << "." << std::endl;
-                    // mark for deletion
-                    msg_iter->set_time(-1.0);
-                    
-                    auto it = event_id_map_.find(msg_iter->time());
-                    uint32_t eid = (it != event_id_map_.end()) ? it->second : blast3d_sync::nextEventId();
+                            orig_time << "." << std::endl;
 
+                    // --- publish sync BEFORE deleting/mutating the message ---
                     double sim_t = world_->SimTime().Double();
-                    blast3d_sync::publishSyncLog(sync_pub_, "pressure", eid, sim_t, model_->GetName());
+                    blast3d_sync::publishSyncLog(sync_pub_, "pressure", eid, sim_t, model_->GetName(), r);
                     last_eid_ = eid;
 
-                    
-                    // current_time_double vs. forceStrength
-//                    timeStampVec.push_back(current_time_double);
-//                    forceVec.push_back(forceStrength); 
-//                    torqueVec.push_back(torqueStrength);
-                    
+                    // CSV
                     blastDataFile << current_time_double << "," << forceStrength << "," << torqueStrength << "\n";
                     plot = true;
+
+                    // mark for deletion AFTER we’re done using fields
+                    msg_iter->set_time(-1.0);
                 }
-            } else {
+            }
+
+               else {
                 //gzdbg << __FUNCTION__ << "() this blast will occur " <<
                 //        msg_iter->time() - current_time_double << " seconds from now." << std::endl;
             }
@@ -195,45 +214,11 @@ namespace gazebo {
                 [](const blast3d_msgs::msgs::Blast3d & msg) {
                     return msg.time() == -1.0; }),
         blastMsgList.end());
-                    
-//        if (plotEverySteps % 100 == 0) {
-//            matplotlibcpp::figure(1);
-//            matplotlibcpp::clf(); // Clear the current figure
-//            matplotlibcpp::plot(timeStampVec, forceVec);
-//            matplotlibcpp::xlabel("Time (s)");
-//            matplotlibcpp::ylabel("Force (N)");
-//            matplotlibcpp::title("Blast force over Time");
-//            
-//            matplotlibcpp::figure(2);
-//            matplotlibcpp::clf(); // Clear the current figure
-//            matplotlibcpp::plot(timeStampVec, torqueVec);
-//            matplotlibcpp::xlabel("Time (s)");
-//            matplotlibcpp::ylabel("Torque (N*m)");
-//            matplotlibcpp::title("Blast torque over Time");
-//            
-//            // Optionally clear the data after plotting
-//            timeStampVec.erase(timeStampVec.begin(), timeStampVec.begin() + 60);
-//            forceVec.erase(forceVec.begin(), forceVec.begin() + 60);
-//            torqueVec.erase(torqueVec.begin(), torqueVec.begin() + 60);
-            
-//            matplotlibcpp::figure(3);
-//            AudioFile<float> saveAudio;
-//            saveAudio.load("/home.md2/sparab2/wind/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/test.wav");
-//            matplotlibcpp::clf(); // Clear the current figure
-//            matplotlibcpp::plot(saveAudio.samples[0]);
-//            matplotlibcpp::xlabel("Sample Index");
-//            matplotlibcpp::ylabel("Audio Magnitude");
-//            matplotlibcpp::title("Published Blast Audio");
-//            matplotlibcpp::ylim(-2.0, 2.0);
-            
-//            matplotlibcpp::pause(0.1); // Display plot for 0.1 seconds
-//            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-//        }
     }
-
+    
     void GazeboBlast3DModelPlugin::Blast3DCallback(Blast3dMsgPtr & blast3d_msg) {
         if (kPrintOnMsgCallback) {
-            gzdbg << __FUNCTION__ << "() blast message received by model plugin." << std::endl;
+//            gzdbg << __FUNCTION__ << "() blast message received by model plugin." << std::endl;
         }
         blast3d_msgs::msgs::Blast3d msg_copy;
         msg_copy.set_x(blast3d_msg->x());
@@ -243,10 +228,17 @@ namespace gazebo {
         msg_copy.set_time(blast3d_msg->time());
         //blastMsgQueue.push_back(*blast3d_msg);
         
-        uint32_t eid = blast3d_sync::nextEventId();
-        event_id_map_[msg_copy.time()] = eid;
+//        uint32_t eid = blast3d_sync::nextEventId();
+//        event_id_map_[msg_copy.time()] = eid;
+//        last_eid_ = eid;
+//        blastMsgList.push_back(msg_copy);
+        
+        const double t  = msg_copy.time();
+        const uint32_t eid = blast3d_sync::eid_from_time(t);
+        event_id_map_[t] = eid;
         last_eid_ = eid;
         blastMsgList.push_back(msg_copy);
+
     }
 
     void GazeboBlast3DModelPlugin::CreatePubsAndSubs() {
@@ -267,14 +259,6 @@ namespace gazebo {
         register_msg.set_namespace_(namespace_);
         register_msg.set_link_wind_topic(blast3d_server_link_topic_);
         blast3d_server_register_pub_->Publish(register_msg);
-//        uint32_t eid = blast3d_sync::nextEventId();
-//        blast3d_sync::publishSyncLog(sync_pub_, "pressure", eid, current_time_double, model_->GetName());
-
-
-//        publishSyncLog(sync_pub_, "pressure",
-//                       current_event_id_, world_->SimTime().Double(),
-//                       vehicle_id_, 0.0);
-
         gzdbg << __FUNCTION__ << "() model plugin registering to world blast plugin server on topic " <<
                 blast3d_server_reglink_topic_ << "." << std::endl;
 

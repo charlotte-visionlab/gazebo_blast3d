@@ -19,23 +19,25 @@
 #include "sync_utils.h"
 #include "gazebo_blast3d_world_plugin.h"
 
-//#include <fstream>
+#include <fstream>
 
-//std::ofstream ground_truth_log;
+std::ofstream ground_truth_log;
 
 
 namespace gazebo {
 
     GazeboBlast3DWorldPlugin::~GazeboBlast3DWorldPlugin() {
-        update_connection_->~Connection();
-//        if (ground_truth_log.is_open()) {
-//        ground_truth_log.close();
-//    }
+        // SAFE cleanup: reset the event connection pointer and close file if open
+        update_connection_.reset();
+        if (ground_truth_log.is_open()) {
+            ground_truth_log.close();
+        }
     }
 
     void GazeboBlast3DWorldPlugin::Load(physics::WorldPtr world, sdf::ElementPtr sdf) {
         
-//        ground_truth_log.open("/home.md2/sparab2/wind/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/ground_truth_data.csv", std::ios::out);
+        ground_truth_log.open("/home.md2/sparab2/wind/uncc_wind_control/ros_image/ros_ws/src/gazebo_blast3d/datasets/ground_truth_data.csv", std::ios::out);
+        ground_truth_log << "blast_id,blast_time,x,y,z,weight_TNT_kg\n";
 //        ground_truth_log << "Time,X,Y,Z,Intensity\n";  // Header for the CSV file
 
         if (kPrintOnPluginLoad) {
@@ -131,14 +133,15 @@ namespace gazebo {
             return;
         }
         last_time_ = now;
+
         std::random_device rand_dev;
         std::mt19937 generator(rand_dev());
         std::uniform_real_distribution<double> distrZ1(0.0, 1.0);
         float blast_occurs = distrZ1(generator);
-        float blastLikelihood = 0.15;
+        float blastLikelihood = 0.11;
         if (blast_occurs > blastLikelihood)
             return;
-        std::uniform_real_distribution<double> distrFF(10.0, 11.0);
+        std::uniform_real_distribution<double> distrFF(8.0, 10.0);
         float weight_TNT_kg = distrFF(generator);
         std::uniform_real_distribution<double> distrTime(1.0, 5.0);
         double futureTime = distrTime(generator);
@@ -162,28 +165,10 @@ namespace gazebo {
             registered_link_blast3d_publisher_list_[i]->Publish(blast3d_message_);
      
         }
-        uint32_t eid = next_event_id_++;
-//        event_id_map_[blastTime] = eid;
-//
-//        double sim_t = now.Double();
-//        double standoff = 0.0; // world doesn’t know vehicle distance yet; OK
-        blast3d_sync::publishSyncLog(sync_pub_, "world", eid, now.Double());
+        uint32_t eid = blast3d_sync::eid_from_time(blastTime);
+        blast3d_sync::publishSyncLog(sync_pub_, "world", eid, blastTime);
 
-
-
-//        if (blast_triggered) {
-//            float x = 100.0; // Example fixed x position
-//            float y = 200.0; // Example fixed y position
-//            float z = 5.0;   // Example fixed z position
-//            float intensity = 50.0; // Example fixed intensity
-//
-//            // Current simulation time
-//            double time = world_->SimTime().Double();
-//
-//            // Log the blast details
-//            ground_truth_log << time << "," << x << "," << y << "," << z << "," << intensity << "\n";
-//        }
-        
+        ground_truth_log << eid << "," << blastTime << "," << x << "," << y << "," << z << "," << weight_TNT_kg << "\n";
     }
 
 //    void GazeboBlast3DWorldPlugin::CreatePubsAndSubs() {
